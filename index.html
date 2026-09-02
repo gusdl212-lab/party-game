@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.2</title>
+<title>파티 게임 라운지 v3.3</title>
 
 <style>
 *{
@@ -296,7 +296,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v3.2
+   다빈치 코드 · 마피아 · 라이어 게임 · v3.3
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1031,22 +1031,38 @@ async function guessDavinci(id, index){
 }
 
 
-/* ================= 마피아 게임 로직 (v3.2 순서 개편 및 완벽 연동) ================= */
+/* ================= 마피아 게임 로직 (v3.3 인원수별 맞춤 배정 및 승리 버그 완벽 해결) ================= */
 function createMafia(ids){
  const shuffled = shuffle(ids);
  const roles = {};
- 
  const total = shuffled.length;
- const mafiaCount = total >= 6 ? 2 : 1;
+ 
+ let mafiaCount = 1;
+ let doctorCount = 1;
+ let policeCount = 0;
+
+ // 요청하신 인원별 직업 배정 규칙 적용
+ if(total === 5){
+  mafiaCount = 1; doctorCount = 1; policeCount = 0; // 시민 3
+ } else if(total === 6){
+  mafiaCount = 2; doctorCount = 1; policeCount = 0; // 시민 3
+ } else if(total === 7){
+  mafiaCount = 2; doctorCount = 1; policeCount = 1; // 시민 3
+ } else if(total >= 8){
+  mafiaCount = 2; doctorCount = 1; policeCount = 1; // 나머지 시민
+ } else {
+  // 4명 이하: 마피아 1, 의사 1, 경찰 0 (나머지 시민)
+  mafiaCount = 1; doctorCount = 1; policeCount = 0;
+ }
 
  for(let i = 0; i < total; i++){
   const id = shuffled[i];
   if(i < mafiaCount){
    roles[id] = 'mafia';
-  } else if(i === mafiaCount){
-   roles[id] = 'police';
-  } else if(i === mafiaCount + 1){
+  } else if(i < mafiaCount + doctorCount){
    roles[id] = 'doctor';
+  } else if(i < mafiaCount + doctorCount + policeCount){
+   roles[id] = 'police';
   } else {
    roles[id] = 'citizen';
   }
@@ -1059,7 +1075,7 @@ function createMafia(ids){
   roles: roles,
   mafias: mafias,
   round: 1,
-  phase: 'role_check', // 첫 시작은 내 역할 확인 단계
+  phase: 'role_check',
   nightActions: {
    kill: null,
    heal: null,
@@ -1095,7 +1111,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.2)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.3)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -1112,7 +1128,6 @@ function drawMafia(r){
   `;
  }
 
- // 1단계: 역할 확인 화면
  if(g.phase === 'role_check'){
   html += `
    <div class="notice" style="border:2px solid #7184e8;background:#1e2740;text-align:center;padding:20px">
@@ -1129,7 +1144,6 @@ function drawMafia(r){
   return html;
  }
 
- // 2단계: 아침 발표 화면
  if(g.phase === 'morning_result'){
   html += `
    <div class="notice" style="border:2px solid #25a99a;background:#142c2a">
@@ -1142,7 +1156,6 @@ function drawMafia(r){
   return html;
  }
 
- // 3단계: 낮 토론 화면
  if(g.phase === 'day'){
   html += `
    <div class="notice" style="border:2px solid #7184e8;background:#1e2740">
@@ -1156,7 +1169,6 @@ function drawMafia(r){
   return html;
  }
 
- // 4단계: 처형 투표 화면
  if(g.phase === 'vote'){
   const myVote = g.votes ? g.votes[me.id] : null;
   html += `
@@ -1176,12 +1188,11 @@ function drawMafia(r){
    </div>
   `;
   if(isHost){
-   html += `<button class="danger" style="width:100%;margin-top:10px" onclick="finalizeMafiaVote()">⚖️ 투표 마감 및 밤으로 넘어가기</button>`;
+   html += `<button class="danger" style="width:100%;margin-top:10px" onclick="finalizeMafiaVote()">⚖️ 투표 마감 및 결과 발표</button>`;
   }
   return html;
  }
 
- // 5단계: 밤 행동 화면 (마피아 처형, 의사 보호 등)
  if(g.phase === 'night'){
   html += `
    <div class="notice" style="background:#161f36;border:1px solid #4a5c8b">
@@ -1253,13 +1264,14 @@ async function startMorningPhase(){
  if(!r || !r.game) return;
  const g = r.game;
  
- // 첫 아침은 희생자 없이 바로 토론으로 진입하거나 아침 발표로 시작
  g.nightActions = g.nightActions || {};
  g.nightActions.killMessage = '첫 번째 밤은 평화롭게 지나갔습니다. 아무도 사망하지 않았습니다.';
  g.phase = 'morning_result';
 
  r.chat = r.chat || [];
  r.chat.push({ id: 'system', text: `🌅 첫 번째 아침이 밝았습니다!` });
+
+ checkMafiaWinCondition(r, g);
 
  await put(ROOM + '/' + roomId, r);
  await get();
@@ -1333,6 +1345,13 @@ async function startDayDiscussion(){
  const r = data.partyRooms[roomId];
  if(!r || !r.game) return;
  const g = r.game;
+ checkMafiaWinCondition(r, g);
+ if(g.phase === 'ended'){
+  await put(ROOM + '/' + roomId, r);
+  await get();
+  render();
+  return;
+ }
  g.phase = 'day';
  r.chat = r.chat || [];
  r.chat.push({ id: 'system', text: `🗣️ 낮 토론이 시작되었습니다. 채팅으로 토론을 나누세요!` });
@@ -1345,6 +1364,13 @@ async function startVotingPhase(){
  const r = data.partyRooms[roomId];
  if(!r || !r.game) return;
  const g = r.game;
+ checkMafiaWinCondition(r, g);
+ if(g.phase === 'ended'){
+  await put(ROOM + '/' + roomId, r);
+  await get();
+  render();
+  return;
+ }
  g.phase = 'vote';
  g.votes = {};
  r.chat = r.chat || [];
@@ -1408,7 +1434,7 @@ async function finalizeMafiaVote(){
 
  g.nightActions = { kill: null, heal: null, investigate: null };
  g.round++;
- g.phase = 'night'; // 투표 처형 후 밤으로 진입
+ g.phase = 'night';
 
  checkMafiaWinCondition(r, g);
 
@@ -1427,15 +1453,16 @@ function checkMafiaWinCondition(r, g){
  if(aliveMafias.length === 0){
   g.phase = 'ended';
   g.winner = 'citizen';
+  r.chat = r.chat || [];
   r.chat.push({ id: 'system', text: `🎉 모든 마피아가 검거되었습니다! 【시민 팀 승리!】` });
  } else if(aliveMafias.length >= aliveCitizens.length){
   g.phase = 'ended';
   g.winner = 'mafia';
+  r.chat = r.chat || [];
   r.chat.push({ id: 'system', text: `🔥 마피아의 수가 시민의 수와 같거나 많아졌습니다! 【마피아 팀 승리!】` });
  }
 }
 
-// 💡 두 번째 판 이후 동기화 문제 해결 (status와 game 모두 갱신)
 async function restartMafia(id){
  const r = data.partyRooms[id];
  if(!r) return;
