@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.1</title>
+<title>파티 게임 라운지 v2.2</title>
 
 <style>
 *{
@@ -121,11 +121,6 @@ input,select,textarea{
  margin:5px 0
 }
 
-textarea{
- min-height:60px;
- resize:vertical
-}
-
 .list{
  max-height:480px;
  overflow:auto
@@ -208,18 +203,21 @@ textarea{
 .tiles{
  display:flex;
  flex-wrap:wrap;
- gap:8px
+ gap:8px;
+ margin:10px 0
 }
 
 .tile{
  min-width:48px;
- padding:9px 7px;
+ padding:12px 8px;
  border-radius:9px;
  text-align:center;
  font-weight:900;
  background:#f4eee1;
  color:#26324a;
- border:2px solid #c7b58f
+ border:2px solid #c7b58f;
+ font-size:16px;
+ cursor:pointer
 }
 
 .tile.red{
@@ -282,7 +280,7 @@ textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.1
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.2
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -297,7 +295,6 @@ textarea{
   <button onclick="login()">로그인</button>
   <button class="mint" onclick="signup()">회원가입</button>
  </div>
- <p class="small">기존 게임과 같은 회원 계정을 사용합니다.</p>
 </section>
 
 <!-- 로비 -->
@@ -315,7 +312,7 @@ textarea{
    <div class="top">
     <div>
      <h2 style="margin:0">🎮 게임 방</h2>
-     <span class="small">방을 만들고 방 안에서 맵을 선택하세요.</span>
+     <span class="small">방을 만들고 맵을 선택하세요.</span>
     </div>
     <button onclick="createRoom()">+ 방 만들기</button>
    </div>
@@ -421,7 +418,7 @@ async function signup(){
  }
  await get();
  if(data.users[id]) return alert('이미 있는 아이디입니다.');
- await put('users/' + encodeURIComponent(id), { id:id, pw:pw, joinedAt:Date.now(), lastActive:Date.now(), forceLogout:0 });
+ await put('users/' + encodeURIComponent(id), { id:id, pw:pw, joinedAt:Date.now(), lastActive:Date.now() });
  me = { id:id, pw:pw };
  await enter();
 }
@@ -432,9 +429,6 @@ async function login(){
  await get();
  const u = data.users[id];
  if(!u || u.pw !== pw) return alert('아이디 또는 비밀번호가 맞지 않습니다.');
- if(u.forceLogout && Date.now() - u.forceLogout < 15000){
-  return alert('관리자에 의해 로그아웃 처리되었습니다.');
- }
  me = { id:id, pw:pw };
  await enter();
 }
@@ -448,24 +442,9 @@ async function enter(){
  tick = setInterval(async () => {
   if(!me) return;
   await get();
-  const u = data.users[me.id];
-  if(!u || (u.forceLogout && Date.now() - u.forceLogout < 15000)){
-   await forceLocalLogout('관리자에 의해 로그아웃되었습니다.');
-   return;
-  }
   await heartbeat();
   render();
- }, 2500);
-}
-
-async function forceLocalLogout(msg){
- if(me){ try{ await put('partyPresence/' + encodeURIComponent(me.id), null); }catch(e){} }
- localStorage.removeItem('partyUser');
- me = null; roomId = null;
- if(tick) clearInterval(tick);
- tick = null;
- show('auth');
- if(msg) alert(msg);
+ }, 2000);
 }
 
 async function heartbeat(){
@@ -510,21 +489,13 @@ function renderLobby(){
 
  $('members').innerHTML = users.map(u => {
   const isOnline = online.some(x => x.id === u.id);
-  let adminButton = '';
-  if(isAdmin() && u.id !== ADMIN_ID){
-   adminButton = `<button class="danger" style="padding:5px 7px;font-size:11px" onclick="deleteMember('${esc(u.id)}')">탈퇴</button>`;
-  }
-  return `<div class="item"><div class="top"><span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span> ${adminButton}</div></div>`;
+  return `<div class="item"><span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span></div>`;
  }).join('') || '<p class="small">회원이 없습니다.</p>';
 
  $('onlineCount').textContent = online.length + '명';
- $('online').innerHTML = online.map(u => {
-  let adminButton = '';
-  if(isAdmin() && u.id !== ADMIN_ID){
-   adminButton = `<button class="danger" style="padding:5px 7px;font-size:11px" onclick="forceLogoutUser('${esc(u.id)}')">강제 로그아웃</button>`;
-  }
-  return `<div class="item online"><div class="top"><span><span class="dot"></span>${esc(name(u.id))}</span> ${adminButton}</div></div>`;
- }).join('') || '<p class="small">접속자가 없습니다.</p>';
+ $('online').innerHTML = online.map(u => `
+  <div class="item online"><span><span class="dot"></span>${esc(name(u.id))}</span></div>
+ `).join('') || '<p class="small">접속자가 없습니다.</p>';
 
  const rooms = Object.entries(data.partyRooms || {}).filter(([,r]) => r && r.status !== 'ended');
  $('rooms').innerHTML = rooms.map(([id,r]) => {
@@ -542,33 +513,6 @@ function renderLobby(){
    </div>
   `;
  }).join('') || '<div class="notice">아직 열린 방이 없어요. 첫 번째 방장이 되어 보세요!</div>';
-}
-
-async function deleteMember(id){
- if(!isAdmin() || id === ADMIN_ID || !data.users[id]) return;
- if(!confirm(name(id) + ' 회원을 정말 탈퇴시키겠습니까?')) return;
- for(const [rid, r] of Object.entries(data.partyRooms || {})){
-  if(!r || !r.players || !r.players[id]) continue;
-  delete r.players[id];
-  const remain = Object.keys(r.players);
-  if(r.host === id) r.host = remain.length ? remain[0] : null;
-  if(remain.length === 0) await put(ROOM + '/' + rid, null);
-  else await put(ROOM + '/' + rid, r);
- }
- await put('partyPresence/' + encodeURIComponent(id), null);
- await put('users/' + encodeURIComponent(id), null);
- await get();
- renderLobby();
- alert(name(id) + ' 회원을 탈퇴 처리했습니다.');
-}
-
-async function forceLogoutUser(id){
- if(!isAdmin() || id === ADMIN_ID) return;
- if(!confirm(name(id) + ' 님을 강제 로그아웃시키겠습니까?')) return;
- await put('users/' + encodeURIComponent(id) + '/forceLogout', Date.now());
- await put('partyPresence/' + encodeURIComponent(id), null);
- await get();
- renderLobby();
 }
 
 function icon(type){
@@ -624,8 +568,6 @@ async function joinRoom(id){
   r.players = r.players || {};
   r.players[me.id] = { id: me.id };
   r.host = me.id;
-  r.chat = r.chat || [];
-  r.chat.push({ id: 'system', text: '관리자가 입장했습니다.' });
   await put(ROOM + '/' + id, r);
   roomId = id;
   await get();
@@ -669,21 +611,21 @@ async function changeMap(type){
  if(!r) return;
  if(r.host !== me.id && !isAdmin()) return alert('방장만 맵을 변경할 수 있습니다.');
  if(r.status !== 'waiting') return alert('게임이 시작된 후에는 맵을 변경할 수 없습니다.');
- if(!['davinci','mafia','liar'].includes(type)) return;
- if(r.type === type) return;
  r.type = type;
  delete r.game;
  r.chat = r.chat || [];
  r.chat.push({ id: 'system', text: '게임 맵이 ' + label(type) + '으로 변경되었습니다.' });
- const ok = await put(ROOM + '/' + roomId, r);
- if(!ok) alert('맵 변경에 실패했습니다.');
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
 }
 
 async function startGame(){
  const r = data.partyRooms[roomId];
  if(!r) return;
  if(r.host !== me.id && !isAdmin()) return alert('방장만 게임을 시작할 수 있습니다.');
- if(r.status !== 'waiting') return alert('이미 게임이 시작되었습니다.');
+ if(r.status === 'playing') return; // 이미 시작된 경우 중복 실행 방지
+ 
  const ids = Object.keys(r.players || {});
  const min = minPlayers(r.type);
  if(ids.length < min) return alert(label(r.type) + '은 최소 ' + min + '명이 필요합니다.');
@@ -721,6 +663,7 @@ async function sendChat(){
  render();
 }
 
+// 렌더링 핵심 수정 부분: playing 상태일 때 무조건 게임판을 그리도록 강제 분기
 function renderRoom(r){
  show('roomView');
  $('roomTitle').innerHTML = `<b>🎮 ${esc(r.title)}</b>`;
@@ -738,7 +681,7 @@ function renderRoom(r){
  if(canControl && r.status === 'waiting'){
   $('hostControls').innerHTML = `<button class="gold" onclick="startGame()">▶ 게임 시작</button>`;
  } else {
-  $('hostControls').innerHTML = isAdmin() ? `<div class="admin-box"><span class="admin-label">👑 관리자</span></div>` : '';
+  $('hostControls').innerHTML = '';
  }
 
  $('chat').innerHTML = (r.chat || []).slice(-50).map(m => `
@@ -749,12 +692,10 @@ function renderRoom(r){
  `).join('');
  $('chat').scrollTop = $('chat').scrollHeight;
 
- // 상태에 따른 화면 분기 철저 분리
- if(r.status === 'waiting'){
-  drawWaitingRoom(r);
- } else if(r.status === 'playing'){
+ // ★ 핵심 수정: status가 playing 이면 대기방을 거치지 않고 무조건 게임판을 그림!
+ if(r.status === 'playing'){
   if(!r.game){
-   $('gameArea').innerHTML = `<div class="notice">게임 데이터를 준비하는 중입니다...</div>`;
+   $('gameArea').innerHTML = `<div class="notice">게임 데이터를 불러오는 중입니다...</div>`;
    return;
   }
   if(r.type === 'davinci'){
@@ -764,6 +705,8 @@ function renderRoom(r){
   } else {
    $('gameArea').innerHTML = drawLiar(r);
   }
+ } else if(r.status === 'waiting'){
+  drawWaitingRoom(r);
  } else if(r.status === 'ended'){
   $('gameArea').innerHTML = drawEnded(r);
  }
@@ -827,8 +770,7 @@ function createDavinci(ids){
   deck: deck,
   turn: 0,
   revealed: {},
-  finished: false,
-  log: ['게임이 시작되었습니다.']
+  finished: false
  };
 }
 
@@ -861,12 +803,14 @@ function drawDavinci(r){
   <h3>상대 타일</h3>
   ${opponents.map(id => `
    <div class="notice">
-    <b>${esc(name(id))}</b><br><br>
-    ${(g.hands[id] || []).map((x, i) => `
-     <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${turn !== me.id ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
-      ${g.revealed[id + '-' + i] ? esc(x) : '?'}
-     </button>
-    `).join('')}
+    <b>${esc(name(id))}</b><br>
+    <div class="tiles">
+     ${(g.hands[id] || []).map((x, i) => `
+      <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${turn !== me.id ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
+       ${g.revealed[id + '-' + i] ? esc(x) : '?'}
+      </button>
+     `).join('')}
+    </div>
    </div>
   `).join('')}
 
@@ -878,7 +822,7 @@ function drawDavinci(r){
     추리 안 함
    </button>
   </div>
-  <p class="small">상대의 ? 타일을 눌러 숫자를 추리하세요.</p>
+  <p class="small" style="margin-top:10px">상대의 ? 타일을 눌러 숫자를 추리하세요.</p>
  `;
 }
 
@@ -891,8 +835,6 @@ async function drawDavinciTile(){
  const tile = g.deck.pop();
  g.hands[me.id].push(tile);
  g.hands[me.id].sort(tileSort);
-
- // 타일을 뽑은 후 차례 넘기기
  g.turn = (g.turn + 1) % g.ids.length;
 
  await put(ROOM + '/' + roomId, r);
@@ -926,16 +868,13 @@ async function guessDavinci(id, index){
  if(Number(answer.trim()) === actual){
   g.revealed[id + '-' + index] = g.hands[id][index];
   
-  // 모든 타일이 공개되었는지 확인
   const allOpen = g.hands[id].every((_, i) => g.revealed[id + '-' + i]);
   if(allOpen){
    r.status = 'ended';
    g.finished = true;
    g.winner = me.id;
   }
-  // 맞히면 계속 자기 차례 유지
  } else {
-  // 틀리면 차례 넘김
   g.turn = (g.turn + 1) % g.ids.length;
  }
 
@@ -944,8 +883,7 @@ async function guessDavinci(id, index){
  render();
 }
 
-/* 마피아 및 라이어 게임 기본 틀 (다음 단계에서 완성) */
-function createMafia(ids){ return { ids, phase:'night', roles:{} }; }
+function createMafia(ids){ return { ids }; }
 function drawMafia(r){ return `<h2>🌙 마피아 게임 준비 중</h2>`; }
 function createLiar(ids){ return { ids }; }
 function drawLiar(r){ return `<h2>🕵️ 라이어 게임 준비 중</h2>`; }
