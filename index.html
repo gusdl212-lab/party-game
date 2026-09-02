@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.7</title>
+<title>파티 게임 라운지 v2.8</title>
 
 <style>
 *{
@@ -296,12 +296,13 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.7
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.8
   </div>
  </div>
  <div id="who" class="tag"></div>
 </header>
 
+<!-- 로그인 -->
 <section id="auth" class="card" style="max-width:420px;margin:40px auto">
  <div id="loginFormBox">
   <h2>로그인</h2>
@@ -338,6 +339,7 @@ input,select,textarea{
  </div>
 </section>
 
+<!-- 로비 -->
 <section id="lobby" class="hidden">
  <div class="grid">
   <aside class="card">
@@ -370,6 +372,7 @@ input,select,textarea{
  </div>
 </section>
 
+<!-- 방 -->
 <section id="roomView" class="hidden">
  <div class="card">
   <div class="top">
@@ -1048,7 +1051,7 @@ const LIAR_WORDS = [
 function createLiar(ids){
  const word = LIAR_WORDS[Math.floor(Math.random() * LIAR_WORDS.length)];
  const shuffledIds = shuffle(ids);
- const liarId = shuffledIds[0]; // 무작위 한 명을 라이어로 지정
+ const liarId = shuffledIds[0];
 
  let roles = {};
  ids.forEach(id => {
@@ -1060,9 +1063,15 @@ function createLiar(ids){
   roles: roles,
   word: word,
   liarId: liarId,
-  stage: 'playing' // playing, voted
+  stage: 'playing', // playing, countdown, voting, ended
+  paused: false,
+  pausedBy: null,
+  timeLeft: 0,
+  winner: null
  };
 }
+
+let liarTimer = null;
 
 function drawLiar(r){
  const g = r.game;
@@ -1072,48 +1081,156 @@ function drawLiar(r){
  const isLiar = (myRole === 'LIAR');
  const isHost = (r.host === me.id || isAdmin());
 
+ // 타이머 처리
+ if(g.stage === 'countdown' && g.timeLeft > 0 && !g.paused && !liarTimer){
+  liarTimer = setInterval(async () => {
+   if(!roomId) return;
+   const roomData = data.partyRooms[roomId];
+   if(!roomData || !roomData.game || roomData.game.stage !== 'countdown' || roomData.game.paused) return;
+   
+   roomData.game.timeLeft--;
+   if(roomData.game.timeLeft <= 0){
+    roomData.game.stage = 'voting';
+    roomData.game.timeLeft = 0;
+    clearInterval(liarTimer);
+    liarTimer = null;
+    roomData.chat = roomData.chat || [];
+    roomData.chat.push({ id: 'system', text: '⏰ 카운트다운 종료! 지금부터 【지목 타임】이 시작됩니다!' });
+   }
+   await put(ROOM + '/' + roomId, roomData);
+   await get();
+   render();
+  }, 1000);
+ }
+
  return `
   <h2>🕵️ 라이어 게임</h2>
+  
+  <div class="row" style="margin-bottom:10px">
+   ${g.paused ? `
+    <button class="gold" onclick="togglePauseLiar()" style="flex:1">▶ 일시정지 해제 (${esc(name(g.pausedBy))}님이 멈춤)</button>
+   ` : `
+    <button class="danger" onclick="togglePauseLiar()" style="flex:1">⏸ 일시정지 (ESC)</button>
+   `}
+  </div>
+
   <div class="turn-banner my-turn">
    ${isLiar ? '🚨 당신은 <span style="color:#de5570">라이어</span>입니다! 정체를 숨기세요!' : '🔍 제시어: <b>' + esc(myRole) + '</b>'}
   </div>
 
-  <div class="notice">
-   <b>게임 규칙</b><br>
-   - 라이어는 제시어를 모릅니다. 다른 사람들의 설명을 듣고 눈치껏 맞추거나 정체를 숨겨야 합니다.<br>
-   - 시민들은 라이어가 누구인지 추리하고 투표를 통해 색출하세요!
-  </div>
+  ${g.paused ? `<div class="notice" style="background:#422a1d;border:1px solid #d89b3a;text-align:center;font-weight:900;color:#f3c66f">⏸ 게임이 일시정지 되었습니다. (${esc(name(g.pausedBy))}님만 해제 가능)</div>` : ''}
 
-  <h3>참가자 역할 확인 현황</h3>
-  <div class="players">
-   ${g.ids.map(id => `
-    <span class="player">
-     ${esc(name(id))} ${g.stage === 'voted' ? (g.roles[id] === 'LIAR' ? ' (라이어)' : ' (시민)') : ' (참여중)'}
-    </span>
-   `).join('')}
-  </div>
-
-  ${g.stage !== 'voted' ? `
-   <div style="margin-top:20px">
-    <button class="danger" style="width:100%" onclick="revealLiarResult()">투표 및 라이어 공개하기</button>
+  <div class="map-box">
+   <div class="map-title">⏱️ 토론 및 카운트다운 컨트롤 (방장 전용)</div>
+   <div class="row" style="margin-top:8px">
+    <button class="gold" ${!isHost || g.paused ? 'disabled' : ''} onclick="startLiarCountdown(30)">⏳ 30초 모래시계</button>
+    <button class="gold" ${!isHost || g.paused ? 'disabled' : ''} onclick="startLiarCountdown(60)">⏳ 60초 모래시계</button>
+    <button class="mint" ${!isHost || g.paused ? 'disabled' : ''} onclick="forceVotingStage()">🚨 즉시 지목 타임</button>
    </div>
-  ` : `
-   <div class="end-box" style="margin-top:20px">
+   ${g.stage === 'countdown' ? `<div style="text-align:center;margin-top:10px;font-size:22px;font-weight:900;color:#d89b3a">⏳ 남은 시간: ${g.timeLeft}초</div>` : ''}
+  </div>
+
+  ${g.stage === 'voting' ? `
+   <div class="notice" style="border:2px solid #25a99a;background:#142c2a">
+    <h3 style="margin:0 0 8px;color:#62e6b2">🎯 지목 타임! 범인을 지목하세요</h3>
+    <p class="small" style="margin:0 0 10px">가장 의심되는 플레이어를 클릭하여 지목하세요. 지목 즉시 결과가 판정됩니다!</p>
+    <div class="players">
+     ${g.ids.map(id => `
+      <button class="gold" style="padding:8px 14px" ${g.paused ? 'disabled' : ''} onclick="voteLiar('${id}')">
+       👉 ${esc(name(id))} 지목하기
+      </button>
+     `).join('')}
+    </div>
+   </div>
+  ` : ''}
+
+  ${g.stage === 'ended' ? `
+   <div class="end-box" style="margin-top:15px">
     <h3>🎉 라이어 게임 결과</h3>
+    <p>승리 팀: <b style="color:${g.winner==='citizen'?'#62e6b2':'#de5570'}">${g.winner==='citizen'?'✨ 시민 팀 승리! (라이어 검거 성공)':'🔥 라이어 팀 승리! (시민 기만 성공)'}</b></p>
     <p>숨겨진 진짜 제시어: <b>${esc(g.word)}</b></p>
     <p>진짜 라이어는 <b>${esc(name(g.liarId))}</b> 님였습니다!</p>
-    <button onclick="restartLiar('${r.id}')">다시 시작하기</button>
+    ${isHost ? `<button class="mint" onclick="restartLiar('${r.id}')" style="margin-top:10px">다시 시작하기</button>` : `<div class="notice">방장이 게임을 다시 시작할 수 있습니다.</div>`}
    </div>
-  `}
+  ` : ''}
  `;
 }
 
-async function revealLiarResult(){
+async function togglePauseLiar(){
  const r = data.partyRooms[roomId];
  if(!r || !r.game) return;
- r.game.stage = 'voted';
+ const g = r.game;
+
+ if(!g.paused){
+  g.paused = true;
+  g.pausedBy = me.id;
+  r.chat = r.chat || [];
+  r.chat.push({ id: 'system', text: `⏸ ${name(me.id)}님이 게임을 일시정지했습니다.` });
+ } else {
+  if(g.pausedBy !== me.id && !isAdmin()){
+   return alert('게임을 일시정지한 사람(' + name(g.pausedBy) + ') 또는 관리자만 해제할 수 있습니다!');
+  }
+  g.paused = false;
+  g.pausedBy = null;
+  r.chat = r.chat || [];
+  r.chat.push({ id: 'system', text: `▶ ${name(me.id)}님이 게임 일시정지를 해제했습니다.` });
+ }
+
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
+async function startLiarCountdown(sec){
+ const r = data.partyRooms[roomId];
+ if(!r || !r.game) return;
+ const g = r.game;
+ if(g.paused) return alert('일시정지 중에는 조작할 수 없습니다.');
+ if(g.host !== me.id && !isAdmin()) return alert('방장만 카운트다운을 시작할 수 있습니다.');
+
+ g.stage = 'countdown';
+ g.timeLeft = sec;
  r.chat = r.chat || [];
- r.chat.push({ id: 'system', text: '🕵️ 라이어가 공개되었습니다! 정답을 확인하세요.' });
+ r.chat.push({ id: 'system', text: `⏳ 방장이 ${sec}초 카운트다운(모래시계)을 시작했습니다!` });
+
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
+async function forceVotingStage(){
+ const r = data.partyRooms[roomId];
+ if(!r || !r.game) return;
+ const g = r.game;
+ if(g.paused) return alert('일시정지 중에는 조작할 수 없습니다.');
+ if(g.host !== me.id && !isAdmin()) return alert('방장만 지목 타임을 열 수 있습니다.');
+
+ g.stage = 'voting';
+ g.timeLeft = 0;
+ r.chat = r.chat || [];
+ r.chat.push({ id: 'system', text: `🚨 방장이 즉시 【지목 타임】을 열었습니다!` });
+
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
+async function voteLiar(targetId){
+ const r = data.partyRooms[roomId];
+ if(!r || !r.game) return;
+ const g = r.game;
+ if(g.paused) return alert('일시정지 중에는 지목할 수 없습니다.');
+
+ const isTargetLiar = (targetId === g.liarId);
+ g.stage = 'ended';
+ g.winner = isTargetLiar ? 'citizen' : 'liar';
+
+ r.chat = r.chat || [];
+ r.chat.push({ 
+  id: 'system', 
+  text: `🎯 ${name(me.id)}님이 【${name(targetId)}】님을 지목했습니다! 결과: ${isTargetLiar ? '🎉 라이어 검거 성공! 시민 승리!' : '❌ 시민을 지목했습니다! 라이어 승리!'}` 
+ });
+
  await put(ROOM + '/' + roomId, r);
  await get();
  render();
