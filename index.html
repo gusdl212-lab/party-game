@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.4</title>
+<title>파티 게임 라운지 v3.5</title>
 
 <style>
 *{
@@ -296,7 +296,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v3.4
+   다빈치 코드 · 마피아 · 라이어 게임 · v3.5
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -731,6 +731,19 @@ async function leaveRoom(){
  render();
 }
 
+async function backToWaitingRoom(){
+ const r = data.partyRooms[roomId];
+ if(!r) return;
+ if(r.host !== me.id && !isAdmin()) return alert('방장만 대기실로 되돌릴 수 있습니다.');
+ r.status = 'waiting';
+ delete r.game;
+ r.chat = r.chat || [];
+ r.chat.push({ id: 'system', text: '🏠 방장이 게임을 종료하고 대기실(방)로 돌아왔습니다.' });
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
 async function changeMap(type){
  if(!roomId) return;
  const r = data.partyRooms[roomId];
@@ -876,12 +889,16 @@ function drawWaitingRoom(r){
 }
 
 function drawEnded(r){
+ const canControl = r.host === me.id || isAdmin();
  return `
   <div class="end-box">
    <h2>🎉 게임 종료</h2>
    <p>${icon(r.type)} ${label(r.type)}</p>
-   <div class="notice">게임이 종료되었습니다.</div>
-   <button onclick="leaveRoom()">← 방으로 돌아가기</button>
+   <div class="notice">게임이 종료되었습니다. 방으로 돌아가서 설정을 바꾸거나 다시 시작할 수 있습니다.</div>
+   <div class="row" style="margin-top:15px">
+    <button onclick="leaveRoom()">← 로비로 나가기</button>
+    ${canControl ? `<button class="mint" onclick="backToWaitingRoom()">🏠 대기실(방)로 돌아가기</button>` : `<div class="notice" style="margin:0">방장이 대기실로 돌려보낼 수 있습니다.</div>`}
+   </div>
   </div>
  `;
 }
@@ -1109,7 +1126,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.4)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.5)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -1121,7 +1138,10 @@ function drawMafia(r){
    <div class="end-box" style="margin-top:15px">
     <h3>🎉 마피아 게임 종료</h3>
     <p>승리 진영: <b style="color:${g.winner==='citizen'?'#62e6b2':'#de5570'}">${g.winner==='citizen'?'✨ 시민 팀 승리!':'🔥 마피아 팀 승리!'}</b></p>
-    ${isHost ? `<button class="mint" onclick="restartMafia('${r.id}')" style="margin-top:10px">🔄 다음 게임 시작</button>` : `<div class="notice">방장이 다음 게임을 시작할 수 있습니다.</div>`}
+    <div class="row" style="margin-top:15px">
+     <button onclick="leaveRoom()">← 로비로 나가기</button>
+     ${isHost ? `<button class="mint" onclick="backToWaitingRoom()">🏠 대기실(방)로 돌아가기</button>` : `<div class="notice" style="margin:0">방장이 대기실로 돌려보낼 수 있습니다.</div>`}
+    </div>
    </div>
   `;
  }
@@ -1461,18 +1481,6 @@ function checkMafiaWinCondition(r, g){
  }
 }
 
-async function restartMafia(id){
- const r = data.partyRooms[id];
- if(!r) return;
- r.status = 'playing';
- r.game = createMafia(Object.keys(r.players || {}));
- r.chat = r.chat || [];
- r.chat.push({ id: 'system', text: '🔄 새로운 마피아 게임이 시작되었습니다! 직업을 확인하세요.' });
- await put(ROOM + '/' + id, r);
- await get();
- render();
-}
-
 
 /* ================= 라이어 게임 로직 및 제시어 200개 ================= */
 const LIAR_WORDS = [
@@ -1611,7 +1619,10 @@ function drawLiar(r){
     <p>승리 팀: <b style="color:${g.winner==='citizen'?'#62e6b2':'#de5570'}">${g.winner==='citizen'?'✨ 시민 팀 승리! (라이어 검거 성공)':'🔥 라이어 팀 승리! (시민 기만 성공)'}</b></p>
     <p>숨겨진 진짜 제시어: <b>${esc(g.word)}</b></p>
     <p>진짜 라이어는 <b>${esc(name(g.liarId))}</b> 님였습니다!</p>
-    ${isHost ? `<button class="mint" onclick="restartLiar('${r.id}')" style="margin-top:10px">🔄 다음 게임 시작</button>` : `<div class="notice">방장이 다음 게임을 시작할 수 있습니다.</div>`}
+    <div class="row" style="margin-top:15px">
+     <button onclick="leaveRoom()">← 로비로 나가기</button>
+     ${isHost ? `<button class="mint" onclick="backToWaitingRoom()">🏠 대기실(방)로 돌아가기</button>` : `<div class="notice" style="margin:0">방장이 대기실로 돌려보낼 수 있습니다.</div>`}
+    </div>
    </div>
   ` : ''}
  `;
@@ -1738,18 +1749,6 @@ async function processVoteResult(r, g){
  });
 
  await put(ROOM + '/' + roomId, r);
- await get();
- render();
-}
-
-async function restartLiar(id){
- const r = data.partyRooms[id];
- if(!r) return;
- r.status = 'playing';
- r.game = createLiar(Object.keys(r.players || {}));
- r.chat = r.chat || [];
- r.chat.push({ id: 'system', text: '🔄 새로운 라이어 게임이 시작되었습니다! 정체와 제시어를 확인하세요.' });
- await put(ROOM + '/' + id, r);
  await get();
  render();
 }
