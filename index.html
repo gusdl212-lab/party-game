@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.6</title>
+<title>파티 게임 라운지 v2.7</title>
 
 <style>
 *{
@@ -296,13 +296,12 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.6
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.7
   </div>
  </div>
  <div id="who" class="tag"></div>
 </header>
 
-<!-- 로그인 -->
 <section id="auth" class="card" style="max-width:420px;margin:40px auto">
  <div id="loginFormBox">
   <h2>로그인</h2>
@@ -339,7 +338,6 @@ input,select,textarea{
  </div>
 </section>
 
-<!-- 로비 -->
 <section id="lobby" class="hidden">
  <div class="grid">
   <aside class="card">
@@ -372,7 +370,6 @@ input,select,textarea{
  </div>
 </section>
 
-<!-- 방 -->
 <section id="roomView" class="hidden">
  <div class="card">
   <div class="top">
@@ -475,7 +472,6 @@ async function signup(){
  await get();
  if(data.users[id]) return alert('이미 존재하는 아이디입니다.');
 
- // 이메일 중복 검사
  const usersArr = Object.values(data.users || {});
  if(usersArr.some(u => u.email === email)){
   return alert('이미 가입된 이메일 주소입니다.');
@@ -876,7 +872,7 @@ function shuffle(arr){
  return [...arr].sort(() => Math.random() - .5);
 }
 
-/* ================= 다빈치 코드 로직 ================= */
+/* ================= 다빈치 코드 로직 (절대 수정 금지 원본 유지) ================= */
 function createDavinci(ids){
  let deck = [];
  for(let n = 0; n < 12; n++){
@@ -1016,10 +1012,123 @@ async function guessDavinci(id, index){
  render();
 }
 
+
+/* ================= 마피아 로직 (기본 틀) ================= */
 function createMafia(ids){ return { ids }; }
 function drawMafia(r){ return `<h2>🌙 마피아 게임 준비 중</h2>`; }
-function createLiar(ids){ return { ids }; }
-function drawLiar(r){ return `<h2>🕵️ 라이어 게임 준비 중</h2>`; }
+
+
+/* ================= 라이어 게임 로직 및 제시어 200개 ================= */
+const LIAR_WORDS = [
+ "김치찌개", "짜장면", "피자", "치킨", "햄버거", "떡볶이", "초밥", "삼겹살", "라면", "족발",
+ "보쌈", "냉면", "양념치킨", "불고기", "비빔밥", "칼국수", "순대국", "감자탕", "부대찌개", "닭갈비",
+ "마라탕", "탕후루", "붕어빵", "호떡", "타코야키", "샌드위치", "스테이크", "파스타", "리조또", "샐러드",
+ "제육볶음", "돈가스", "우동", "초계국수", "회오리오므라이스", "계란말이", "오징어볶음", "곱창구이", "막창", "닭발",
+ "서울", "부산", "제주도", "독도", "남산타워", "한강공원", "경복궁", "부산역", "해운대", "속초",
+ "강릉", "전주한옥마을", "경주", "설악산", "한라산", "에베레스트", "자유의여신상", "에펠탑", "피사의사탑", "콜로세움",
+ "루브르박물관", "영국대관람차", "도쿄타워", "만리장성", "타이베이101", "오사카성", "시드니오페라하우스", "그랜드캐니언", "하와이", "발리",
+ "의사", "간호사", "경찰관", "소방관", "교사", "교수", "판사", "검사", "변호사", "경찰서장",
+ "프로게이머", "유튜버", "스트리머", "아이돌", "배우", "가수", "모델", "웹툰작가", "작가", "시인",
+ "축구선수", "야구선수", "농구선수", "배구선수", "수영선수", "골프선수", "테니스선수", "권투선수", "펜싱선수", "양궁선수",
+ "요리사", "제빵사", "바리스타", "바텐더", "승무원", "파일럿", "기관사", "환경미화원", "건축가", "디자이너",
+ "사자", "호랑이", "코끼리", "기린", "원숭이", "침팬지", "고릴라", "하마", "코뿔소", "얼룩말",
+ "늑대", "여우", "곰", "반달가슴곰", "북극곰", "판다", "캥거루", "코알라", "다람쥐", "청솔모",
+ "토끼", "햄스터", "고슴도치", "수달", "해달", "물개", "바다사자", "돌고래", "고래", "상어",
+ "문어", "오징어", "낙지", "킹크랩", "랍스터", "새우", "꽃게", "참치", "연어", "광어",
+ "스마트폰", "노트북", "태블릿", "키보드", "마우스", "모니터", "이어폰", "헤드셋", "스피커", "공기청정기",
+ "냉장고", "세탁기", "건조기", "식기세척기", "로봇청소기", "전자레인지", "에어프라이어", "커피머신", "전기밥솥", "다리미",
+ "선풍기", "에어컨", "온풍기", "가습기", "제습기", "드라이기", "고데기", "전기면도기", "안마의자", "체중계",
+ "자동차", "전기차", "자전거", "전동킥보드", "오토바이", "지하철", "KTX", "버스", "택시", "비행기",
+ "헬리콥터", "배", "요트", "크루즈", "캠핑카", "트럭", "경운기", "포크레인", "불도저", "레미콘",
+ "축구공", "야구공", "농구공", "배구공", "테니스공", "골프공", "볼링공", "당구공", "탁구공", "셔틀콕",
+ "배트", "골프채", "테니스채", "라켓", "글러브", "스케이트보드", "인라인스케이트", "스키", "스노보드", "서핑보드",
+ "기타", "피아노", "드럼", "바이올린", "첼로", "플루트", "색소폰", "트럼펫", "하모니카", "아코디언"
+];
+
+function createLiar(ids){
+ const word = LIAR_WORDS[Math.floor(Math.random() * LIAR_WORDS.length)];
+ const shuffledIds = shuffle(ids);
+ const liarId = shuffledIds[0]; // 무작위 한 명을 라이어로 지정
+
+ let roles = {};
+ ids.forEach(id => {
+  roles[id] = (id === liarId) ? 'LIAR' : word;
+ });
+
+ return {
+  ids: ids,
+  roles: roles,
+  word: word,
+  liarId: liarId,
+  stage: 'playing' // playing, voted
+ };
+}
+
+function drawLiar(r){
+ const g = r.game;
+ if(!g || !g.ids) return `<div class="notice">게임 데이터를 불러오는 중...</div>`;
+
+ const myRole = g.roles[me.id];
+ const isLiar = (myRole === 'LIAR');
+ const isHost = (r.host === me.id || isAdmin());
+
+ return `
+  <h2>🕵️ 라이어 게임</h2>
+  <div class="turn-banner my-turn">
+   ${isLiar ? '🚨 당신은 <span style="color:#de5570">라이어</span>입니다! 정체를 숨기세요!' : '🔍 제시어: <b>' + esc(myRole) + '</b>'}
+  </div>
+
+  <div class="notice">
+   <b>게임 규칙</b><br>
+   - 라이어는 제시어를 모릅니다. 다른 사람들의 설명을 듣고 눈치껏 맞추거나 정체를 숨겨야 합니다.<br>
+   - 시민들은 라이어가 누구인지 추리하고 투표를 통해 색출하세요!
+  </div>
+
+  <h3>참가자 역할 확인 현황</h3>
+  <div class="players">
+   ${g.ids.map(id => `
+    <span class="player">
+     ${esc(name(id))} ${g.stage === 'voted' ? (g.roles[id] === 'LIAR' ? ' (라이어)' : ' (시민)') : ' (참여중)'}
+    </span>
+   `).join('')}
+  </div>
+
+  ${g.stage !== 'voted' ? `
+   <div style="margin-top:20px">
+    <button class="danger" style="width:100%" onclick="revealLiarResult()">투표 및 라이어 공개하기</button>
+   </div>
+  ` : `
+   <div class="end-box" style="margin-top:20px">
+    <h3>🎉 라이어 게임 결과</h3>
+    <p>숨겨진 진짜 제시어: <b>${esc(g.word)}</b></p>
+    <p>진짜 라이어는 <b>${esc(name(g.liarId))}</b> 님였습니다!</p>
+    <button onclick="restartLiar('${r.id}')">다시 시작하기</button>
+   </div>
+  `}
+ `;
+}
+
+async function revealLiarResult(){
+ const r = data.partyRooms[roomId];
+ if(!r || !r.game) return;
+ r.game.stage = 'voted';
+ r.chat = r.chat || [];
+ r.chat.push({ id: 'system', text: '🕵️ 라이어가 공개되었습니다! 정답을 확인하세요.' });
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
+async function restartLiar(id){
+ const r = data.partyRooms[id];
+ if(!r) return;
+ r.game = createLiar(Object.keys(r.players || {}));
+ r.chat = r.chat || [];
+ r.chat.push({ id: 'system', text: '🔄 새로운 라이어 게임이 시작되었습니다!' });
+ await put(ROOM + '/' + id, r);
+ await get();
+ render();
+}
 </script>
 </body>
 </html>
