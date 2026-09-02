@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.3</title>
+<title>파티 게임 라운지 v2.4</title>
 
 <style>
 *{
@@ -276,7 +276,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.3
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.4
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -686,7 +686,6 @@ function renderRoom(r){
  `).join('');
  $('chat').scrollTop = $('chat').scrollHeight;
 
- // ★ 핵심 수정: 게임 상태(playing)가 감지되면 무조건 다빈치 코드 게임판을 그리도록 강제 분기
  if(r.status === 'playing'){
   if(!r.game){
    $('gameArea').innerHTML = `<div class="notice">게임 데이터를 불러오는 중입니다...</div>`;
@@ -781,6 +780,7 @@ function drawDavinci(r){
  const g = r.game;
  if(!g || !g.ids) return `<div class="notice">게임 데이터를 불러오는 중...</div>`;
  
+ g.revealed = g.revealed || {};
  const turn = g.ids[g.turn % g.ids.length];
  const my = g.hands[me.id] || [];
  const opponents = g.ids.filter(id => id !== me.id);
@@ -801,11 +801,14 @@ function drawDavinci(r){
    <div class="notice">
     <b>${esc(name(id))}</b><br>
     <div class="tiles">
-     ${(g.hands[id] || []).map((x, i) => `
-      <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${turn !== me.id ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
-       ${g.revealed[id + '-' + i] ? esc(x) : '?'}
-      </button>
-     `).join('')}
+     ${(g.hands[id] || []).map((x, i) => {
+      const isRev = g.revealed[id] && g.revealed[id][i];
+      return `
+       <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${turn !== me.id ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
+        ${isRev ? esc(x) : '?'}
+       </button>
+      `;
+     }).join('')}
     </div>
    </div>
   `).join('')}
@@ -860,11 +863,13 @@ async function guessDavinci(id, index){
  if(answer === null) return;
 
  const actual = tileNumber(g.hands[id][index]);
+ g.revealed = g.revealed || {};
+ g.revealed[id] = g.revealed[id] || {};
 
  if(Number(answer.trim()) === actual){
-  g.revealed[id + '-' + index] = g.hands[id][index];
+  g.revealed[id][index] = true;
   
-  const allOpen = g.hands[id].every((_, i) => g.revealed[id + '-' + i]);
+  const allOpen = g.hands[id].every((_, i) => g.revealed[id][i]);
   if(allOpen){
    r.status = 'ended';
    g.finished = true;
