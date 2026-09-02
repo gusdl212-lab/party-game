@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.5</title>
+<title>파티 게임 라운지 v2.6</title>
 
 <style>
 *{
@@ -296,7 +296,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.5
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.6
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -320,6 +320,7 @@ input,select,textarea{
   <input id="signupId" placeholder="아이디 (2~20자)">
   <input id="signupPw" type="password" placeholder="비밀번호 (4자 이상)">
   <input id="signupPwConfirm" type="password" placeholder="비밀번호 확인">
+  <input id="signupEmail" placeholder="이메일 (예: id@korea.kr)">
   <div class="row" style="margin-top:10px">
    <button class="mint" onclick="signup()">가입하기</button>
    <button class="danger" onclick="switchAuth('login')">돌아가기</button>
@@ -329,9 +330,10 @@ input,select,textarea{
  <div id="findFormBox" class="hidden">
   <h2>비밀번호 찾기</h2>
   <input id="findId" placeholder="가입한 아이디 입력">
-  <div class="notice" id="findResult" style="display:none"></div>
+  <input id="findEmail" placeholder="가입한 이메일 입력 (@korea.kr)">
+  <input id="newPw" type="password" placeholder="새로운 비밀번호 입력">
   <div class="row" style="margin-top:10px">
-   <button class="gold" onclick="findPassword()">비밀번호 확인</button>
+   <button class="gold" onclick="resetPassword()">비밀번호 재설정</button>
    <button class="danger" onclick="switchAuth('login')">돌아가기</button>
   </div>
  </div>
@@ -454,20 +456,38 @@ function switchAuth(mode){
  $('loginFormBox').classList.toggle('hidden', mode !== 'login');
  $('signupFormBox').classList.toggle('hidden', mode !== 'signup');
  $('findFormBox').classList.toggle('hidden', mode !== 'find');
- $('findResult').style.display = 'none';
 }
 
 async function signup(){
  const id = $('signupId').value.trim();
  const pw = $('signupPw').value;
  const pwc = $('signupPwConfirm').value;
+ const email = $('signupEmail').value.trim();
+
  if(!/^[a-zA-Z0-9가-힣_]{2,20}$/.test(id) || pw.length < 4){
   return alert('아이디는 2~20자, 비밀번호는 4자 이상으로 입력하세요.');
  }
  if(pw !== pwc) return alert('비밀번호가 일치하지 않습니다.');
+ if(!email.endsWith('@korea.kr')){
+  return alert('이메일은 반드시 @korea.kr 형식이어야 합니다.');
+ }
+
  await get();
- if(data.users[id]) return alert('이미 있는 아이디입니다.');
- await put('users/' + encodeURIComponent(id), { id:id, pw:pw, joinedAt:Date.now(), lastActive:Date.now() });
+ if(data.users[id]) return alert('이미 존재하는 아이디입니다.');
+
+ // 이메일 중복 검사
+ const usersArr = Object.values(data.users || {});
+ if(usersArr.some(u => u.email === email)){
+  return alert('이미 가입된 이메일 주소입니다.');
+ }
+
+ await put('users/' + encodeURIComponent(id), { 
+  id: id, 
+  pw: pw, 
+  email: email, 
+  joinedAt: Date.now(), 
+  lastActive: Date.now() 
+ });
  alert('회원가입 완료! 로그인 해주세요.');
  switchAuth('login');
 }
@@ -482,17 +502,28 @@ async function login(){
  await enter();
 }
 
-async function findPassword(){
+async function resetPassword(){
  const id = $('findId').value.trim();
+ const email = $('findEmail').value.trim();
+ const newPw = $('newPw').value;
+
+ if(!id || !email || !newPw){
+  return alert('아이디, 이메일, 새로운 비밀번호를 모두 입력해주세요.');
+ }
+ if(newPw.length < 4){
+  return alert('비밀번호는 4자 이상으로 입력하세요.');
+ }
+
  await get();
  const u = data.users[id];
- const res = $('findResult');
- res.style.display = 'block';
- if(!u){
-  res.textContent = '존재하지 않는 아이디입니다.';
- } else {
-  res.innerHTML = `회원님의 비밀번호는 <b>${u.pw}</b> 입니다.`;
+ if(!u || u.email !== email){
+  return alert('일치하는 회원 정보를 찾을 수 없습니다. 아이디와 이메일을 확인해주세요.');
  }
+
+ u.pw = newPw;
+ await put('users/' + encodeURIComponent(id), u);
+ alert('비밀번호가 성공적으로 재설정되었습니다! 새 비밀번호로 로그인하세요.');
+ switchAuth('login');
 }
 
 async function enter(){
