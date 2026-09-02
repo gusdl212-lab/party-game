@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v2.4</title>
+<title>파티 게임 라운지 v2.5</title>
 
 <style>
 *{
@@ -125,7 +125,10 @@ input,select,textarea{
 .item{
  padding:9px;
  border-bottom:1px solid #2b344d;
- font-size:13px
+ font-size:13px;
+ display:flex;
+ justify-content:space-between;
+ align-items:center
 }
 
 .online{
@@ -252,6 +255,23 @@ input,select,textarea{
  border:1px solid #4a5c8b
 }
 
+.turn-banner{
+ padding:16px;
+ border-radius:12px;
+ text-align:center;
+ font-size:18px;
+ font-weight:900;
+ margin-bottom:15px;
+ border:2px solid #5a6fa8;
+ background:#1a233a;
+ color:#9db4ff;
+}
+.turn-banner.my-turn{
+ border-color:#25a99a;
+ background:#142c2a;
+ color:#62e6b2;
+}
+
 @media(max-width:800px){
  .grid{
   grid-template-columns:1fr
@@ -276,7 +296,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · v2.4
+   다빈치 코드 · 마피아 · 라이어 게임 · v2.5
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -284,12 +304,36 @@ input,select,textarea{
 
 <!-- 로그인 -->
 <section id="auth" class="card" style="max-width:420px;margin:40px auto">
- <h2>입장하기</h2>
- <input id="id" placeholder="아이디 (2~20자)">
- <input id="pw" type="password" placeholder="비밀번호 (4자 이상)">
- <div class="row">
-  <button onclick="login()">로그인</button>
-  <button class="mint" onclick="signup()">회원가입</button>
+ <div id="loginFormBox">
+  <h2>로그인</h2>
+  <input id="loginId" placeholder="아이디">
+  <input id="loginPw" type="password" placeholder="비밀번호">
+  <div class="row" style="margin-top:10px">
+   <button onclick="login()">로그인</button>
+   <button class="mint" onclick="switchAuth('signup')">회원가입</button>
+  </div>
+  <button class="danger" style="width:100%;margin-top:8px" onclick="switchAuth('find')">비밀번호 찾기</button>
+ </div>
+
+ <div id="signupFormBox" class="hidden">
+  <h2>회원가입</h2>
+  <input id="signupId" placeholder="아이디 (2~20자)">
+  <input id="signupPw" type="password" placeholder="비밀번호 (4자 이상)">
+  <input id="signupPwConfirm" type="password" placeholder="비밀번호 확인">
+  <div class="row" style="margin-top:10px">
+   <button class="mint" onclick="signup()">가입하기</button>
+   <button class="danger" onclick="switchAuth('login')">돌아가기</button>
+  </div>
+ </div>
+
+ <div id="findFormBox" class="hidden">
+  <h2>비밀번호 찾기</h2>
+  <input id="findId" placeholder="가입한 아이디 입력">
+  <div class="notice" id="findResult" style="display:none"></div>
+  <div class="row" style="margin-top:10px">
+   <button class="gold" onclick="findPassword()">비밀번호 확인</button>
+   <button class="danger" onclick="switchAuth('login')">돌아가기</button>
+  </div>
  </div>
 </section>
 
@@ -406,27 +450,49 @@ function show(id){
 
 function name(id){ return id === ADMIN_ID ? '관리자' : id; }
 
+function switchAuth(mode){
+ $('loginFormBox').classList.toggle('hidden', mode !== 'login');
+ $('signupFormBox').classList.toggle('hidden', mode !== 'signup');
+ $('findFormBox').classList.toggle('hidden', mode !== 'find');
+ $('findResult').style.display = 'none';
+}
+
 async function signup(){
- const id = $('id').value.trim();
- const pw = $('pw').value;
+ const id = $('signupId').value.trim();
+ const pw = $('signupPw').value;
+ const pwc = $('signupPwConfirm').value;
  if(!/^[a-zA-Z0-9가-힣_]{2,20}$/.test(id) || pw.length < 4){
   return alert('아이디는 2~20자, 비밀번호는 4자 이상으로 입력하세요.');
  }
+ if(pw !== pwc) return alert('비밀번호가 일치하지 않습니다.');
  await get();
  if(data.users[id]) return alert('이미 있는 아이디입니다.');
  await put('users/' + encodeURIComponent(id), { id:id, pw:pw, joinedAt:Date.now(), lastActive:Date.now() });
- me = { id:id, pw:pw };
- await enter();
+ alert('회원가입 완료! 로그인 해주세요.');
+ switchAuth('login');
 }
 
 async function login(){
- const id = $('id').value.trim();
- const pw = $('pw').value;
+ const id = $('loginId').value.trim();
+ const pw = $('loginPw').value;
  await get();
  const u = data.users[id];
  if(!u || u.pw !== pw) return alert('아이디 또는 비밀번호가 맞지 않습니다.');
  me = { id:id, pw:pw };
  await enter();
+}
+
+async function findPassword(){
+ const id = $('findId').value.trim();
+ await get();
+ const u = data.users[id];
+ const res = $('findResult');
+ res.style.display = 'block';
+ if(!u){
+  res.textContent = '존재하지 않는 아이디입니다.';
+ } else {
+  res.innerHTML = `회원님의 비밀번호는 <b>${u.pw}</b> 입니다.`;
+ }
 }
 
 async function enter(){
@@ -461,6 +527,31 @@ async function logout(){
  show('auth');
 }
 
+async function adminDeleteUser(targetId){
+ if(!isAdmin()) return;
+ if(targetId === ADMIN_ID) return alert('관리자는 탈퇴시킬 수 없습니다.');
+ if(!confirm(targetId + ' 유저를 강제 탈퇴시키겠습니까?')) return;
+ await put('users/' + encodeURIComponent(targetId), null);
+ await put('partyPresence/' + encodeURIComponent(targetId), null);
+ await get();
+ render();
+}
+
+async function adminForceLogout(targetId){
+ if(!isAdmin()) return;
+ await put('partyPresence/' + encodeURIComponent(targetId), null);
+ await get();
+ render();
+}
+
+async function adminDeleteRoom(id){
+ if(!isAdmin()) return;
+ if(!confirm('해당 방을 강제로 폭파하시겠습니까?')) return;
+ await put(ROOM + '/' + id, null);
+ await get();
+ render();
+}
+
 function active(){
  const now = Date.now();
  return Object.values(data.partyPresence || {}).filter(x => x && now - x.lastActive < 15000);
@@ -485,12 +576,19 @@ function renderLobby(){
 
  $('members').innerHTML = users.map(u => {
   const isOnline = online.some(x => x.id === u.id);
-  return `<div class="item"><span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span></div>`;
+  return `
+   <div class="item">
+    <span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span>
+    ${isAdmin() && u.id !== ADMIN_ID ? `<button class="danger" style="padding:4px 8px;font-size:11px" onclick="adminDeleteUser('${u.id}')">탈퇴</button>` : ''}
+   </div>`;
  }).join('') || '<p class="small">회원이 없습니다.</p>';
 
  $('onlineCount').textContent = online.length + '명';
  $('online').innerHTML = online.map(u => `
-  <div class="item online"><span><span class="dot"></span>${esc(name(u.id))}</span></div>
+  <div class="item online">
+   <span><span class="dot"></span>${esc(name(u.id))}</span>
+   ${isAdmin() && u.id !== ADMIN_ID ? `<button class="danger" style="padding:4px 8px;font-size:11px" onclick="adminForceLogout('${u.id}')">로그아웃</button>` : ''}
+  </div>
  `).join('') || '<p class="small">접속자가 없습니다.</p>';
 
  const rooms = Object.entries(data.partyRooms || {}).filter(([,r]) => r && r.status !== 'ended');
@@ -503,9 +601,12 @@ function renderLobby(){
      현재 맵: ${icon(r.type)} ${label(r.type)}<br>
      ${count}/${limit(r.type)}명 · ${r.status==='waiting'?'대기 중':'게임 진행 중'}
     </p>
-    <button onclick="joinRoom('${id}')" ${r.status!=='waiting'&&!isAdmin()?'disabled':''}>
-     ${isAdmin()?'관리자로 입장':'참가하기'}
-    </button>
+    <div class="row">
+     <button onclick="joinRoom('${id}')" ${r.status!=='waiting'&&!isAdmin()?'disabled':''}>
+      ${isAdmin()?'관리자로 입장':'참가하기'}
+     </button>
+     ${isAdmin() ? `<button class="danger" onclick="adminDeleteRoom('${id}')">방 폭파</button>` : ''}
+    </div>
    </div>
   `;
  }).join('') || '<div class="notice">아직 열린 방이 없어요. 첫 번째 방장이 되어 보세요!</div>';
@@ -563,7 +664,6 @@ async function joinRoom(id){
  if(isAdmin()){
   r.players = r.players || {};
   r.players[me.id] = { id: me.id };
-  r.host = me.id;
   await put(ROOM + '/' + id, r);
   roomId = id;
   await get();
@@ -784,16 +884,12 @@ function drawDavinci(r){
  const turn = g.ids[g.turn % g.ids.length];
  const my = g.hands[me.id] || [];
  const opponents = g.ids.filter(id => id !== me.id);
+ const isMyTurn = (turn === me.id);
 
  return `
   <h2>🧩 다빈치 코드</h2>
-  <div class="notice">
-   ${turn === me.id ? '🟢 당신의 차례입니다!' : '⏳ ' + esc(name(turn)) + '님의 차례입니다.'}
-  </div>
-
-  <h3>내 타일</h3>
-  <div class="tiles">
-   ${my.map(x => `<span class="tile ${x.startsWith('🔴')?'red':'blue'}">${esc(x)}</span>`).join('')}
+  <div class="turn-banner ${isMyTurn ? 'my-turn' : ''}">
+   ${isMyTurn ? '🟢 당신의 차례입니다!' : '⏳ ' + esc(name(turn)) + '님의 차례입니다.'}
   </div>
 
   <h3>상대 타일</h3>
@@ -804,7 +900,7 @@ function drawDavinci(r){
      ${(g.hands[id] || []).map((x, i) => {
       const isRev = g.revealed[id] && g.revealed[id][i];
       return `
-       <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${turn !== me.id ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
+       <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${!isMyTurn ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
         ${isRev ? esc(x) : '?'}
        </button>
       `;
@@ -813,11 +909,16 @@ function drawDavinci(r){
    </div>
   `).join('')}
 
-  <div class="row">
-   <button ${turn !== me.id || !g.deck.length ? 'disabled' : ''} onclick="drawDavinciTile()">
+  <h3>내 타일</h3>
+  <div class="tiles">
+   ${my.map(x => `<span class="tile ${x.startsWith('🔴')?'red':'blue'}">${esc(x)}</span>`).join('')}
+  </div>
+
+  <div class="row" style="margin-top:15px">
+   <button ${!isMyTurn || !g.deck.length ? 'disabled' : ''} onclick="drawDavinciTile()">
     타일 뽑기 (${g.deck.length})
    </button>
-   <button class="mint" ${turn !== me.id ? 'disabled' : ''} onclick="passDavinciTurn()">
+   <button class="mint" ${!isMyTurn ? 'disabled' : ''} onclick="passDavinciTurn()">
     추리 안 함
    </button>
   </div>
