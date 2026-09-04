@@ -875,6 +875,9 @@ async function startGame(){
   r.game = createLiar(ids);
  } else if(r.type === 'rummikub'){
   r.game = createRummikub(ids, Number(r.turnLimit) === 60 ? 60 : 30);
+  /* 루미큐브 게임 상태의 필수 필드 보장 */
+  r.game.opened = {};
+  ids.forEach(id => { r.game.hands[id] = Array.isArray(r.game.hands[id]) ? r.game.hands[id] : []; });
  }
 
  r.status = 'playing';
@@ -2012,6 +2015,11 @@ function rummiRenderGroup(group,g,index,draft=false){
 
 function drawRummikub(r){
  const g=r.game; if(!g||!g.ids)return `<div class="notice">루미큐브 데이터를 불러오는 중...</div>`;
+ /* 구버전/부분 저장 데이터와의 호환: 필수 객체가 없더라도 게임 화면이 죽지 않도록 보정 */
+ g.hands = g.hands || {}; g.ids.forEach(id=>{ if(!Array.isArray(g.hands[id])) g.hands[id]=[]; });
+ g.opened = g.opened || {}; g.groups = Array.isArray(g.groups)?g.groups:[]; g.deck = Array.isArray(g.deck)?g.deck:[];
+ if(typeof g.turn !== 'number') g.turn=0;
+ if(!g.turnStartedAt) g.turnStartedAt=Date.now();
  const isMyTurn=rummiCurrentTurn(g)===me.id,isHost=r.host===me.id||isAdmin(),left=rummiTimeLeft(g);
  if(g.finished||r.status==='ended')return `<div class="rummi-board"><div class="rummi-title">🎲 루미큐브</div><div class="end-box"><h2>🏆 게임 종료!</h2><p>우승자: <b>${esc(name(g.winner))}</b></p><p>${esc(g.lastAction||'')}</p><div class="row"><button onclick="leaveRoom()">← 로비로 나가기</button>${isHost?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}</div></div></div>`;
  if(isMyTurn)rummiEnsureDraft(g); else if(rummiDraftTurn!==g.turn)rummiResetLocal();
