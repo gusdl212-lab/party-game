@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.13</title>
+<title>파티 게임 라운지 v3.14</title>
 
 <style>
 *{
@@ -395,7 +395,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.13
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.14
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1249,7 +1249,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.13)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.14)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -1884,6 +1884,7 @@ let rummiTimer = null;
 let rummiDraggedId = null;
 let rummiDraggedIds = null;
 let rummiHandOrder = []; // 상대 턴에도 내가 정렬한 패 순서를 유지하기 위한 로컬 표시 순서
+let rummiRackDragId = null;
 
 const RUMMI_COLORS = [
  {k:'red', label:'빨강', code:'R'},
@@ -1963,7 +1964,7 @@ function createRummikub(ids,turnLimit){
 function rummiCurrentTurn(g){ return g.ids[g.turn%g.ids.length]; }
 function rummiTimeLeft(g){ const limit=Number(g.turnLimit||30); return Math.max(0,limit-Math.floor((Date.now()-(g.turnStartedAt||Date.now()))/1000)); }
 function rummiAllTableIds(g){ return (g.groups||[]).flat(); }
-function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; rummiDraggedIds=null; }
+function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; rummiDraggedIds=null; rummiRackDragId=null; }
 
 function rummiGroupOptions(group,g){
  const ts=group.map(id=>g.tiles[id]).filter(Boolean); if(ts.length<3||ts.length>13)return [];
@@ -2050,7 +2051,7 @@ function rummiEnsureDraft(g){
  rummiDraftTurn=g.turn; rummiSelected.clear();
 }
 function rummiTileButton(t,selected=false,small=false,onclick='',drag=true){
- return `<button class="rummi-tile ${rummiColorClass(t.c)} ${t.j?'joker':''} ${selected?'selected':''} ${small?'small':''}"
+ return `<button type="button" class="rummi-tile ${rummiColorClass(t.c)} ${t.j?'joker':''} ${selected?'selected':''} ${small?'small':''}"
   draggable="${drag?'true':'false'}" ondragstart="rummiDragStart(event,'${t.id}')" ondragend="rummiDragEnd(event)"
   title="${esc(rummiTileLabel(t))}" onclick="${onclick}">${rummiTileText(t)}</button>`;
 }
@@ -2136,6 +2137,28 @@ async function rummiMoveToHand(ev){
  await rummiSyncDraft();
 }
 
+function rummiRackDragStart(ev,id){
+ rummiRackDragId=id;
+ if(ev&&ev.dataTransfer){ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',id);}
+}
+function rummiRackDragOver(ev){ev.preventDefault();if(ev.currentTarget)ev.currentTarget.classList.add('rummi-drop-hover');}
+function rummiRackDragLeave(ev){if(ev.currentTarget)ev.currentTarget.classList.remove('rummi-drop-hover');}
+function rummiRackDrop(ev,targetId){
+ ev.preventDefault();ev.stopPropagation();
+ if(ev.currentTarget)ev.currentTarget.classList.remove('rummi-drop-hover');
+ const r=data.partyRooms[roomId],g=r?.game;if(!g)return;
+ const source=rummiRackDragId || (ev.dataTransfer?ev.dataTransfer.getData('text/plain'):'');
+ rummiRackDragId=null;
+ if(!source||source===targetId)return;
+ const hand=[...(g.hands?.[me.id]||[])];
+ const a=hand.indexOf(source),b=hand.indexOf(targetId);
+ if(a<0||b<0)return;
+ hand.splice(a,1);hand.splice(b,0,source);
+ rummiRememberHandOrder(hand);
+ if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=hand.slice();
+ render();
+}
+
 function rummiRenderGroup(group,g,index,draft=false){
  const valid=rummiValidGroup(group,g);
  const draggable=draft;
@@ -2185,11 +2208,11 @@ function drawRummikub(r){
    ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
   </div>
   <div class="rummi-rack ${draft?'rummi-work-rack rummi-drop-zone':''}" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToHand(event)"`:''}>
-   <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 내 패 보기'}</span></div>
-   <div class="rummi-hand">${hand.map(id=>g.tiles[id]?rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,draft):'').join('')}</div>
+   <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 777/789 정렬 및 패 순서 변경 가능'}</span></div>
+   <div class="rummi-hand" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)"`:''}>${hand.map(id=>g.tiles[id]?`<span class="rummi-rack-slot" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)" ondrop="rummiRackDrop(event,'${id}')"`:''}>${rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,true)}</span>`:'').join('')}</div>
   </div>
-  <div class="rummi-actions">${isMyTurn?`<button class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
-  <div class="rummi-tools"><button onclick="rummiSortNumber()">777 · 숫자순</button><button onclick="rummiSortColor()">789 · 색깔순</button><button onclick="rummiClearSelection()">선택 해제</button></div>
+  <div class="rummi-actions">${isMyTurn?`<button type="button" class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button type="button" class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button type="button" onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
+  <div class="rummi-tools"><button type="button" onclick="rummiSortNumber()">777 · 숫자순</button><button type="button" onclick="rummiSortColor()">789 · 색깔순</button><button type="button" onclick="rummiClearSelection()">선택 해제</button></div>
   <div class="rummi-help"><b>정식 규칙:</b> 그룹은 같은 숫자·서로 다른 색 3~4장, 런은 같은 색 연속 숫자 3장 이상입니다. 최초 등록은 내 패만으로 30점 이상이며 조커도 사용할 수 있습니다. 최초 등록 후에는 테이블을 자유롭게 재배열할 수 있지만 그 턴에 내 패를 최소 1장 사용해야 합니다. 테이블의 조커는 초기 등록 전에는 회수할 수 없고, 회수한 조커는 같은 턴에 반드시 새 조합으로 다시 사용해야 합니다. 방금 먹은 패는 다음 턴부터 사용할 수 있습니다.</div>
   ${g.lastAction?`<div class="notice" style="margin-bottom:0;background:rgba(0,0,0,.18)">📢 ${esc(g.lastAction)}</div>`:''}
  </div>`;
@@ -2200,21 +2223,23 @@ function rummiSelectRack(id){rummiSelectDraft(id)}
 function rummiSelectTable(id){rummiSelectDraft(id)}
 function rummiClearSelection(){rummiSelected.clear();render();}
 
-async function rummiSortNumber(){
+function rummiSortNumber(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g)return;
- const arr=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:[...(g.hands[me.id]||[])];
- arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(A.j!==B.j)return A.j?1:-1;if(A.n!==B.n)return A.n-B.n;return String(A.c).localeCompare(String(B.c));});
+ const source=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:(g.hands?.[me.id]||[]);
+ const arr=[...source].filter(id=>g.tiles?.[id]);
+ arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(!!A.j!==!!B.j)return A.j?1:-1;if(Number(A.n)!==Number(B.n))return Number(A.n)-Number(B.n);return String(A.c).localeCompare(String(B.c));});
  rummiRememberHandOrder(arr);
- if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr;
+ if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr.slice();
  render();
 }
-async function rummiSortColor(){
+function rummiSortColor(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g)return;
- const arr=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:[...(g.hands[me.id]||[])];
+ const source=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:(g.hands?.[me.id]||[]);
+ const arr=[...source].filter(id=>g.tiles?.[id]);
  const order={R:0,B:1,O:2,K:3,J:4};
- arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(order[A.c]!==order[B.c])return order[A.c]-order[B.c];return (A.n||99)-(B.n||99);});
+ arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];const ao=order[A.c]??9,bo=order[B.c]??9;if(ao!==bo)return ao-bo;return Number(A.n||99)-Number(B.n||99);});
  rummiRememberHandOrder(arr);
- if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr;
+ if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr.slice();
  render();
 }
 
