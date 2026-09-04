@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.5 · v3.11</title>
+<title>파티 게임 라운지 v3.12</title>
 
 <style>
 *{
@@ -395,7 +395,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.6
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.12
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1249,7 +1249,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.5)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.12)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -1910,15 +1910,53 @@ function rummiMakeDeck(){
  return {tiles,deck};
 }
 
+function rummiTileScore(t){ return t?.j ? 30 : Number(t?.n||0); }
+function rummiHandScore(hand,g){ return (hand||[]).reduce((sum,id)=>sum+rummiTileScore(g.tiles[id]),0); }
+function rummiFinishByEmptyRack(r,playerId){
+ const g=r.game; g.finished=true; g.winner=playerId;
+ g.scores={};
+ let total=0;
+ g.ids.forEach(id=>{ if(id===playerId)return; const s=rummiHandScore(g.hands[id],g); g.scores[id]=-s; total+=s; });
+ g.scores[playerId]=total;
+ g.lastAction=`🎉 ${name(playerId)}님이 모든 패를 내려놓아 우승했습니다! (+${total}점)`;
+ r.status='ended';
+}
+function rummiFinishByNoMoves(r){
+ const g=r.game;
+ const scores={};
+ let best=null;
+ g.ids.forEach(id=>{ const s=rummiHandScore(g.hands[id],g); scores[id]=s; if(best===null||s<best)best=s; });
+ const winners=g.ids.filter(id=>scores[id]===best);
+ g.finished=true; g.scores={};
+ g.ids.forEach(id=>{ g.scores[id]=scores[id]===best ? 0 : -(scores[id]-best); });
+ g.winner=winners[0]||null;
+ g.lastAction=`🏁 더 이상 진행할 수 없어 게임이 종료되었습니다. 남은 패 합계가 가장 낮은 ${winners.map(id=>name(id)).join(', ')}님이 승리했습니다.`;
+ r.status='ended';
+}
+
 function createRummikub(ids,turnLimit){
  const d=rummiMakeDeck();
  const hands={}; ids.forEach(id=>hands[id]=[]);
+ // 공식 규칙의 선 결정: 각자 한 장을 뽑아 가장 높은 숫자가 선. 동률이면 다시 뽑는다.
+ let firstIndex=0;
+ while(ids.length>1){
+  const picked=ids.map(()=>d.deck.pop());
+  const vals=picked.map(tid=>d.tiles[tid].j?0:d.tiles[tid].n);
+  const max=Math.max(...vals);
+  const winners=vals.map((v,i)=>v===max?i:-1).filter(i=>i>=0);
+  d.deck.push(...picked);
+  if(winners.length===1){ firstIndex=winners[0]; break; }
+  for(let i=d.deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d.deck[i],d.deck[j]]=[d.deck[j],d.deck[i]];}
+ }
  /* 실제 게임처럼 한 장씩 돌려가며 14장씩 배분 */
- for(let round=0;round<14;round++) ids.forEach(id=>hands[id].push(d.deck.pop()));
+ for(let round=0;round<14;round++) for(let offset=0;offset<ids.length;offset++){
+  const id=ids[(firstIndex+offset)%ids.length];
+  hands[id].push(d.deck.pop());
+ }
  return {
-  version:2, ids, tiles:d.tiles, deck:d.deck, hands, groups:[], opened:{}, turn:0,
-  turnLimit:turnLimit===60?60:30, turnStartedAt:Date.now(), finished:false,winner:null,
-  lastAction:'게임이 시작되었습니다. 106장의 패를 섞어 각자 14장씩 나누었습니다.',lastDraw:null
+  version:3, ids, tiles:d.tiles, deck:d.deck, hands, groups:[], opened:{}, turn:Math.floor(Math.random()*ids.length),
+  turnLimit:turnLimit===60?60:30, turnStartedAt:Date.now(), finished:false,winner:null, scores:{}, consecutivePasses:0,
+  lastAction:'게임이 시작되었습니다. 106장의 패를 완전히 섞어 각자 14장씩 나누었습니다. 첫 차례는 무작위로 정했습니다.',lastDraw:null
  };
 }
 function rummiCurrentTurn(g){ return g.ids[g.turn%g.ids.length]; }
@@ -1960,35 +1998,30 @@ function rummiInitialValue(groups,g){ let total=0; for(const gr of groups){const
 function rummiSortGroup(group,g){
  const ts=group.map(id=>g.tiles[id]).filter(Boolean);
  const normal=ts.filter(t=>!t.j), jokers=ts.filter(t=>t.j);
-
- // 같은 색 연속 조합: 조커는 비어 있는 숫자 자리에 자동 삽입.
- if(normal.length>=2 && normal.every(t=>t.c===normal[0].c)){
-  normal.sort((a,b)=>a.n-b.n);
-  const min=normal[0].n, max=normal[normal.length-1].n;
-  const out=[];
-  let j=0;
-  for(let n=min; n<=max; n++){
-   const found=normal.find(t=>t.n===n);
-   if(found) out.push(found.id);
-   else if(j<jokers.length) out.push(jokers[j++].id);
+ if(!ts.length)return [];
+ // 같은 색 연속 조합: 가능한 연속 구간을 찾아 조커를 정확한 빈칸에 삽입한다.
+ if(normal.length>=1 && normal.every(t=>t.c===normal[0].c) && new Set(normal.map(t=>t.n)).size===normal.length){
+  const color=normal[0].c, len=ts.length, nums=new Set(normal.map(t=>t.n));
+  let best=null;
+  for(let start=1;start<=14-len;start++){
+   const wanted=[];for(let n=start;n<start+len;n++)wanted.push(n);
+   if(normal.every(t=>wanted.includes(t.n))){best=wanted;break;}
   }
-  while(j<jokers.length) out.push(jokers[j++].id);
-  return out;
+  if(best){
+   const out=[];let ji=0;
+   best.forEach(n=>{const found=normal.find(t=>t.n===n);out.push(found?found.id:jokers[ji++].id);});
+   return out;
+  }
  }
-
- // 같은 숫자 조합: 조커는 끝에 표시.
- if(normal.length&&normal.every(t=>t.n===normal[0].n)){
+ // 같은 숫자 그룹: 조커는 빠진 색을 대신하므로 뒤에 붙여도 값은 동일하지만 시각적으로 색상순으로 정렬.
+ if(normal.length&&normal.every(t=>t.n===normal[0].n)&&new Set(normal.map(t=>t.c)).size===normal.length){
   const order={R:0,B:1,O:2,K:3};
   normal.sort((a,b)=>(order[a.c]??9)-(order[b.c]??9));
   return normal.map(t=>t.id).concat(jokers.map(t=>t.id));
  }
-
- return ts.sort((a,b)=>{
-  if(a.j!==b.j)return a.j?1:-1;
-  if(a.n!==b.n)return a.n-b.n;
-  return String(a.c).localeCompare(String(b.c));
- }).map(t=>t.id);
+ return ts.sort((a,b)=>{if(a.j!==b.j)return a.j?1:-1;if(a.n!==b.n)return a.n-b.n;return String(a.c).localeCompare(String(b.c));}).map(t=>t.id);
 }
+
 function rummiRemoveFromDraft(id){
  if(!rummiDraft)return;
  rummiDraft.hand=rummiDraft.hand.filter(x=>x!==id);
@@ -2074,8 +2107,16 @@ async function rummiMoveToHand(ev){
  const r=data.partyRooms[roomId],g=r?.game,ids=rummiDragged(ev);
  if(!g||!rummiDraft||!ids.length)return;
  const own=rummiOwnOriginal(g);
- const allowed=ids.filter(id=>own.has(id));
- if(allowed.length!==ids.length)return alert('테이블의 패는 내 패로 가져올 수 없습니다.');
+ const originalTable=new Set(rummiAllTableIds(g));
+ const allowed=[];
+ for(const id of [...new Set(ids)]){
+  const t=g.tiles[id];
+  if(own.has(id)){ allowed.push(id); continue; }
+  // 공식 규칙상 테이블의 일반 패는 손패로 가져갈 수 없다.
+  // 조커는 교체/재배치 과정에서 잠시 손패 영역으로 가져올 수 있지만, 같은 턴에 반드시 새 조합에 다시 사용해야 한다.
+  if(originalTable.has(id)&&t?.j){ allowed.push(id); continue; }
+  return alert('테이블의 일반 패는 내 패로 가져올 수 없습니다. 조커만 교체를 위해 잠시 가져올 수 있습니다.');
+ }
  allowed.forEach(id=>rummiRemoveFromDraft(id));
  rummiDraft.hand.push(...allowed);
  rummiSelected.clear();
@@ -2106,7 +2147,7 @@ function drawRummikub(r){
  if(!g.turnStartedAt) g.turnStartedAt=Date.now();
  const isMyTurn=rummiCurrentTurn(g)===me.id,isHost=r.host===me.id||isAdmin(),left=rummiTimeLeft(g);
 
- if(g.finished||r.status==='ended')return `<div class="rummi-board"><div class="rummi-title">🎲 루미큐브</div><div class="end-box"><h2>🏆 게임 종료!</h2><p>우승자: <b>${esc(name(g.winner))}</b></p><p>${esc(g.lastAction||'')}</p><div class="row"><button onclick="leaveRoom()">← 로비로 나가기</button>${isHost?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}</div></div></div>`;
+ if(g.finished||r.status==='ended')return `<div class="rummi-board"><div class="rummi-title">🎲 루미큐브</div><div class="end-box"><h2>🏆 게임 종료!</h2><p>우승자: <b>${esc(name(g.winner))}</b></p><p>${esc(g.lastAction||'')}</p>${g.scores?`<div class="notice" style="text-align:left"><b>점수</b><br>${g.ids.map(id=>`${esc(name(id))}: ${g.scores[id]>0?'+':''}${g.scores[id]??0}점`).join('<br>')}</div>`:''}<div class="row"><button onclick="leaveRoom()">← 로비로 나가기</button>${isHost?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}</div></div></div>`;
 
  if(isMyTurn) rummiEnsureDraft(g); else if(rummiDraftTurn!==g.turn) rummiResetLocal();
  if(isMyTurn&&!rummiTimer)rummiTimer=setInterval(rummiLocalClock,1000);
@@ -2131,13 +2172,13 @@ function drawRummikub(r){
    ${tableHtml}
    ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
   </div>
-  <div class="rummi-rack ${draft?'rummi-work-rack':''}">
+  <div class="rummi-rack ${draft?'rummi-work-rack rummi-drop-zone':''}" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToHand(event)"`:''}>
    <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 내 패 보기'}</span></div>
    <div class="rummi-hand">${hand.map(id=>g.tiles[id]?rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,draft):'').join('')}</div>
   </div>
   <div class="rummi-actions">${isMyTurn?`<button class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
   <div class="rummi-tools"><button onclick="rummiSortNumber()">777 · 숫자순</button><button onclick="rummiSortColor()">789 · 색깔순</button><button onclick="rummiClearSelection()">선택 해제</button></div>
-  <div class="rummi-help"><b>규칙:</b> 같은 숫자 다른 색 3~4장 / 같은 색 연속 숫자 3장 이상. 조커는 빠진 숫자를 대신할 수 있으며 연속 조합에서는 그 위치에 자동 정렬됩니다. 최초 등록은 내 패만 사용해 30점 이상. 이후에는 테이블 패를 포함해 자유롭게 재구성할 수 있습니다.</div>
+  <div class="rummi-help"><b>정식 규칙:</b> 그룹은 같은 숫자·서로 다른 색 3~4장, 런은 같은 색 연속 숫자 3장 이상입니다. 최초 등록은 내 패만으로 30점 이상이며 조커도 사용할 수 있습니다. 최초 등록 후에는 테이블을 자유롭게 재배열할 수 있지만 그 턴에 내 패를 최소 1장 사용해야 합니다. 테이블의 조커는 초기 등록 전에는 회수할 수 없고, 회수한 조커는 같은 턴에 반드시 새 조합으로 다시 사용해야 합니다. 방금 먹은 패는 다음 턴부터 사용할 수 있습니다.</div>
   ${g.lastAction?`<div class="notice" style="margin-bottom:0;background:rgba(0,0,0,.18)">📢 ${esc(g.lastAction)}</div>`:''}
  </div>`;
 }
@@ -2160,32 +2201,45 @@ async function rummiSortColor(){
 async function rummiCommitTurn(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id||!rummiDraft)return;
  const originalTable=new Set(rummiAllTableIds(g)), originalHand=new Set(g.hands[me.id]||[]);
+ const originalTableJokers=new Set([...originalTable].filter(id=>g.tiles[id]?.j));
  const allSource=new Set([...originalTable,...originalHand]);
  const finalTable=new Set(rummiDraft.groups.flat()), finalHand=new Set(rummiDraft.hand);
- if(finalTable.size+finalHand.size!==allSource.size||[...allSource].some(id=>!finalTable.has(id)&&!finalHand.has(id)))return alert('패가 사라졌거나 중복되었습니다. 다시 배치해주세요.');
- if([...finalHand].some(id=>!originalHand.has(id)))return alert('테이블의 패는 내 패로 가져갈 수 없습니다. 테이블에 다시 놓아주세요.');
- /* 최초 등록: 원래 내 패가 아닌 타일이 들어갔으면 금지 */
+ if(finalTable.size+finalHand.size!==allSource.size||[...allSource].some(id=>!finalTable.has(id)&&!finalHand.has(id)))
+  return alert('패가 사라졌거나 중복되었습니다. 다시 배치해주세요.');
+ if([...finalHand].some(id=>!originalHand.has(id)))
+  return alert('테이블의 패는 손패로 가져갈 수 없습니다. 조커를 회수했다면 같은 턴에 반드시 새 조합으로 다시 사용하세요.');
  if(!g.opened[me.id]){
   if([...finalTable].some(id=>!originalHand.has(id)))return alert('최초 등록에서는 다른 사람이 놓은 패를 사용할 수 없습니다.');
   const value=rummiInitialValue(rummiDraft.groups,g);
   if(value<30)return alert(`최초 등록 합계가 ${value}점입니다. 30점 이상이어야 합니다.`);
-  g.opened[me.id]=true; g.lastAction=`${name(me.id)}님이 ${value}점으로 최초 등록에 성공했습니다!`;
+  g.opened[me.id]=true;
+  g.lastAction=`${name(me.id)}님이 ${value}점으로 최초 등록에 성공했습니다!`;
  } else {
-  /* 기존 테이블 + 내 패만 재배치 가능. 테이블에 새로 추가된 내 패가 최소 1장은 있어야 함 */
-  const added=[...finalTable].some(id=>originalHand.has(id));
+  const addedFromRack=[...finalTable].some(id=>originalHand.has(id));
   const changed=JSON.stringify(g.groups)!==JSON.stringify(rummiDraft.groups);
-  if(!added&&!changed)return alert('이번 턴에는 최소 한 장의 내 패를 내려놓거나 테이블을 변경해야 합니다.');
+  if(!addedFromRack&&!changed)return alert('이번 턴에는 내 패를 최소 1장 사용해야 합니다. 아무것도 하지 않으려면 패 1장을 먹으세요.');
+ }
+ // 초기 등록 전에는 조커를 테이블에서 회수할 수 없다. 초기 등록 후 회수한 조커는 반드시 같은 턴 새 조합으로 재사용해야 한다.
+ for(const jid of originalTableJokers){
+  if(finalHand.has(jid))return alert('테이블의 조커는 손패에 남겨둘 수 없습니다. 교체한 뒤 같은 턴에 새 조합으로 사용해야 합니다.');
  }
  const cleanGroups=rummiDraft.groups.filter(gr=>Array.isArray(gr)&&gr.length).map(gr=>rummiSortGroup([...new Set(gr)],g));
  const check=rummiValidateGroups(cleanGroups,g); if(!check.ok)return alert(check.reason);
  g.groups=cleanGroups;
  g.hands[me.id]=rummiDraft.hand.filter(id=>originalHand.has(id));
  delete g.liveGroups; delete g.liveTurn;
+ g.consecutivePasses=0;
  rummiResetLocal();
- if(g.hands[me.id].length===0){g.finished=true;g.winner=me.id;r.status='ended';g.lastAction=`🎉 ${name(me.id)}님이 모든 패를 내려놓아 우승했습니다!`;}
- else{g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();g.lastAction=g.lastAction||`${name(me.id)}님이 턴을 확정했습니다.`;}
+ if(g.hands[me.id].length===0){
+  rummiFinishByEmptyRack(r,me.id);
+ } else {
+  g.turn=(g.turn+1)%g.ids.length;
+  g.turnStartedAt=Date.now();
+  g.lastAction=`${name(me.id)}님이 턴을 확정했습니다.`;
+ }
  await put(ROOM+'/'+roomId,r);await get();render();
 }
+
 async function rummiUndoTurn(){
  const r=data.partyRooms[roomId],g=r?.game;
  if(!g||rummiCurrentTurn(g)!==me.id)return;
@@ -2196,18 +2250,47 @@ async function rummiUndoTurn(){
 
 async function rummiDraw(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id)return;
- if(!g.deck.length)return alert('더 이상 먹을 패가 없습니다.');
- const tid=g.deck.pop();g.hands[me.id].push(tid);delete g.liveGroups; delete g.liveTurn; g.lastDraw={player:me.id,tile:tid};g.lastAction=`${name(me.id)}님이 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();
+ if(!g.deck.length){
+  // 풀이 비었으면 더 이상 먹을 수 없다. 한 바퀴 동안 누구도 유효한 수를 못 만들면 종료.
+  g.consecutivePasses=Number(g.consecutivePasses||0)+1;
+  if(g.consecutivePasses>=g.ids.length){
+   rummiFinishByNoMoves(r);
+  } else {
+   g.lastAction=`${name(me.id)}님은 먹을 패가 없어 차례를 넘겼습니다.`;
+   g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();
+  }
+  rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();return;
+ }
+ const tid=g.deck.pop();
+ g.hands[me.id].push(tid);
+ g.consecutivePasses=0;
+ delete g.liveGroups; delete g.liveTurn;
+ g.lastDraw={player:me.id,tile:tid};
+ g.lastAction=`${name(me.id)}님이 패 1장을 먹었습니다.`;
+ g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();
+ rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();
 }
+
 function rummiLocalClock(){
  if(!roomId)return;const r=data.partyRooms[roomId];if(!r||r.type!=='rummikub'||r.status!=='playing'||!r.game)return;const g=r.game,left=rummiTimeLeft(g),el=$('rummiClock');if(el){el.textContent=left+'초';el.classList.toggle('urgent',left<=10);}if(rummiCurrentTurn(g)===me.id&&left<=0&&!g.finished&&!rummiTimeoutLock){rummiTimeoutLock=true;rummiAutoTimeout();}
 }
 let rummiTimeoutLock=false;
 async function rummiAutoTimeout(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id||rummiTimeLeft(g)>0||g.finished){rummiTimeoutLock=false;return;}
- /* 시간 초과는 현재 배치를 폐기하고 패 1장을 먹은 뒤 다음 턴 */
- if(g.deck.length)g.hands[me.id].push(g.deck.pop());delete g.liveGroups; delete g.liveTurn; g.lastAction=`${name(me.id)}님이 시간 초과되어 배치를 취소하고 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();rummiTimeoutLock=false;await put(ROOM+'/'+roomId,r);await get();render();
+ if(g.deck.length){
+  g.hands[me.id].push(g.deck.pop());
+  g.consecutivePasses=0;
+  delete g.liveGroups; delete g.liveTurn;
+  g.lastAction=`${name(me.id)}님이 시간 초과되어 배치를 취소하고 패 1장을 먹었습니다.`;
+  g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();
+ } else {
+  g.consecutivePasses=Number(g.consecutivePasses||0)+1;
+  if(g.consecutivePasses>=g.ids.length){ rummiFinishByNoMoves(r); }
+  else { g.lastAction=`${name(me.id)}님이 시간 초과되었고 먹을 패가 없어 차례를 넘겼습니다.`; g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now(); }
+ }
+ rummiResetLocal();rummiTimeoutLock=false;await put(ROOM+'/'+roomId,r);await get();render();
 }
+
 async function setRummikubTurnLimit(sec){const r=data.partyRooms[roomId];if(!r||r.type!=='rummikub')return;if(r.host!==me.id&&!isAdmin())return alert('방장만 턴 시간을 바꿀 수 있습니다.');if(r.status!=='waiting')return alert('게임 시작 후에는 턴 시간을 바꿀 수 없습니다.');r.turnLimit=sec===60?60:30;r.chat=r.chat||[];r.chat.push({id:'system',text:`⏱️ 루미큐브 턴 제한시간이 ${r.turnLimit===60?'1분':'30초'}로 설정되었습니다.`});await put(ROOM+'/'+roomId,r);await get();render();}
 
 </script>
