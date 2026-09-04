@@ -864,6 +864,8 @@ async function startGame(){
   r.game = createMafia(ids);
  } else if(r.type === 'liar'){
   r.game = createLiar(ids);
+ } else if(r.type === 'rummikub'){
+  r.game = createRummikub(ids, Number(r.turnLimit) === 60 ? 60 : 30);
  }
 
  r.status = 'playing';
@@ -943,8 +945,12 @@ function renderRoom(r){
    $('gameArea').innerHTML = drawDavinci(r);
   } else if(r.type === 'mafia'){
    $('gameArea').innerHTML = drawMafia(r);
-  } else {
+  } else if(r.type === 'liar'){
    $('gameArea').innerHTML = drawLiar(r);
+  } else if(r.type === 'rummikub'){
+   $('gameArea').innerHTML = drawRummikub(r);
+  } else {
+   $('gameArea').innerHTML = '<div class="notice">알 수 없는 게임입니다.</div>';
   }
  } else if(r.status === 'waiting'){
   drawWaitingRoom(r);
