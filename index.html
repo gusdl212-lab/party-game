@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.5 · v3.10</title>
+<title>파티 게임 라운지 v3.5 · v3.11</title>
 
 <style>
 *{
@@ -2060,7 +2060,7 @@ async function rummiMoveToGroup(ev,index){
 }
 async function rummiMoveToNewGroup(ev){
  ev.preventDefault(); ev.stopPropagation();
- const r=data.partyRooms[roomId],g=r?.game,ids=rummiDragged(ev);
+ const r=data.partyRooms[roomId],g=r?.game; let ids=rummiDragged(ev);
  if(!g||!rummiDraft||!ids.length)return;
  ids=[...new Set(ids)].filter(id=>g.tiles[id]);
  ids.forEach(id=>rummiRemoveFromDraft(id));
@@ -2176,8 +2176,9 @@ async function rummiCommitTurn(){
   const changed=JSON.stringify(g.groups)!==JSON.stringify(rummiDraft.groups);
   if(!added&&!changed)return alert('이번 턴에는 최소 한 장의 내 패를 내려놓거나 테이블을 변경해야 합니다.');
  }
- const check=rummiValidateGroups(rummiDraft.groups,g); if(!check.ok)return alert(check.reason);
- g.groups=rummiDraft.groups.map(gr=>rummiSortGroup([...gr],g)).filter(gr=>gr.length);
+ const cleanGroups=rummiDraft.groups.filter(gr=>Array.isArray(gr)&&gr.length).map(gr=>rummiSortGroup([...new Set(gr)],g));
+ const check=rummiValidateGroups(cleanGroups,g); if(!check.ok)return alert(check.reason);
+ g.groups=cleanGroups;
  g.hands[me.id]=rummiDraft.hand.filter(id=>originalHand.has(id));
  delete g.liveGroups; delete g.liveTurn;
  rummiResetLocal();
