@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.5</title>
+<title>파티 게임 라운지 v3.5 · v3.10</title>
 
 <style>
 *{
@@ -367,6 +367,10 @@ input,select,textarea{
 .rummi-drop-hint{color:#8fb4dd;font-size:12px;padding:10px}
 .rummi-tile[draggable="true"]{cursor:grab}
 .rummi-tile[draggable="true"]:active{cursor:grabbing}
+
+
+.rummi-live-note{font-size:11px;color:#8ff1cb;font-weight:800;margin-left:6px}
+.rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
 .rummi-modal-note{font-size:13px;color:#dbe8fb}
 .rummi-opponent{
@@ -1878,6 +1882,7 @@ let rummiDraft = null;
 let rummiDraftTurn = null;
 let rummiTimer = null;
 let rummiDraggedId = null;
+let rummiDraggedIds = null;
 
 const RUMMI_COLORS = [
  {k:'red', label:'빨강', code:'R'},
@@ -1919,7 +1924,7 @@ function createRummikub(ids,turnLimit){
 function rummiCurrentTurn(g){ return g.ids[g.turn%g.ids.length]; }
 function rummiTimeLeft(g){ const limit=Number(g.turnLimit||30); return Math.max(0,limit-Math.floor((Date.now()-(g.turnStartedAt||Date.now()))/1000)); }
 function rummiAllTableIds(g){ return (g.groups||[]).flat(); }
-function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; }
+function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; rummiDraggedIds=null; }
 
 function rummiGroupOptions(group,g){
  const ts=group.map(id=>g.tiles[id]).filter(Boolean); if(ts.length<3||ts.length>13)return [];
@@ -1955,13 +1960,34 @@ function rummiInitialValue(groups,g){ let total=0; for(const gr of groups){const
 function rummiSortGroup(group,g){
  const ts=group.map(id=>g.tiles[id]).filter(Boolean);
  const normal=ts.filter(t=>!t.j), jokers=ts.filter(t=>t.j);
- if(normal.length&&normal.every(t=>t.c===normal[0].c)){
-  normal.sort((a,b)=>a.n-b.n); return normal.map(t=>t.id).concat(jokers.map(t=>t.id));
+
+ // 같은 색 연속 조합: 조커는 비어 있는 숫자 자리에 자동 삽입.
+ if(normal.length>=2 && normal.every(t=>t.c===normal[0].c)){
+  normal.sort((a,b)=>a.n-b.n);
+  const min=normal[0].n, max=normal[normal.length-1].n;
+  const out=[];
+  let j=0;
+  for(let n=min; n<=max; n++){
+   const found=normal.find(t=>t.n===n);
+   if(found) out.push(found.id);
+   else if(j<jokers.length) out.push(jokers[j++].id);
+  }
+  while(j<jokers.length) out.push(jokers[j++].id);
+  return out;
  }
+
+ // 같은 숫자 조합: 조커는 끝에 표시.
  if(normal.length&&normal.every(t=>t.n===normal[0].n)){
-  const order={R:0,B:1,O:2,K:3}; normal.sort((a,b)=>(order[a.c]??9)-(order[b.c]??9)); return normal.map(t=>t.id).concat(jokers.map(t=>t.id));
+  const order={R:0,B:1,O:2,K:3};
+  normal.sort((a,b)=>(order[a.c]??9)-(order[b.c]??9));
+  return normal.map(t=>t.id).concat(jokers.map(t=>t.id));
  }
- return ts.sort((a,b)=>{if(a.j!==b.j)return a.j?1:-1;if(a.n!==b.n)return a.n-b.n;return String(a.c).localeCompare(String(b.c));}).map(t=>t.id);
+
+ return ts.sort((a,b)=>{
+  if(a.j!==b.j)return a.j?1:-1;
+  if(a.n!==b.n)return a.n-b.n;
+  return String(a.c).localeCompare(String(b.c));
+ }).map(t=>t.id);
 }
 function rummiRemoveFromDraft(id){
  if(!rummiDraft)return;
@@ -1983,61 +2009,135 @@ function rummiTileButton(t,selected=false,small=false,onclick='',drag=true){
   draggable="${drag?'true':'false'}" ondragstart="rummiDragStart(event,'${t.id}')" ondragend="rummiDragEnd(event)"
   title="${esc(rummiTileLabel(t))}" onclick="${onclick}">${rummiTileText(t)}</button>`;
 }
-function rummiDragStart(ev,id){ rummiDraggedId=id; if(ev&&ev.dataTransfer){ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',id);} }
-function rummiDragEnd(){ rummiDraggedId=null; document.querySelectorAll('.rummi-drop-hover').forEach(x=>x.classList.remove('rummi-drop-hover')); }
+function rummiDragStart(ev,id){
+ rummiDraggedIds = (rummiSelected.has(id) && rummiSelected.size>1)
+   ? [...rummiSelected]
+   : [id];
+ if(ev&&ev.dataTransfer){
+  ev.dataTransfer.effectAllowed='move';
+  ev.dataTransfer.setData('text/plain',rummiDraggedIds.join(','));
+ }
+}
+function rummiDragEnd(){
+ rummiDraggedIds=null;
+ document.querySelectorAll('.rummi-drop-hover').forEach(x=>x.classList.remove('rummi-drop-hover'));
+}
 function rummiDragOver(ev){ ev.preventDefault(); if(ev.currentTarget)ev.currentTarget.classList.add('rummi-drop-hover'); }
 function rummiDragLeave(ev){ if(ev.currentTarget)ev.currentTarget.classList.remove('rummi-drop-hover'); }
-function rummiDragged(ev){ return rummiDraggedId || (ev&&ev.dataTransfer?ev.dataTransfer.getData('text/plain'):null); }
-
-function rummiMoveToGroup(ev,index){
- ev.preventDefault(); ev.stopPropagation(); const r=data.partyRooms[roomId],g=r?.game,id=rummiDragged(ev); if(!g||!rummiDraft||!id)return;
- rummiRemoveFromDraft(id); if(!rummiDraft.groups[index])rummiDraft.groups[index]=[]; rummiDraft.groups[index].push(id); rummiDraft.groups[index]=rummiSortGroup(rummiDraft.groups[index],g); rummiSelected.clear(); render();
+function rummiDragged(ev){
+ const raw=(rummiDraggedIds&&rummiDraggedIds.length?rummiDraggedIds:null)
+   || (ev&&ev.dataTransfer?ev.dataTransfer.getData('text/plain').split(',').filter(Boolean):[]);
+ return Array.isArray(raw)?raw:[raw];
 }
-function rummiMoveToNewGroup(ev){
- ev.preventDefault(); ev.stopPropagation(); const r=data.partyRooms[roomId],g=r?.game,id=rummiDragged(ev); if(!g||!rummiDraft||!id)return;
- rummiRemoveFromDraft(id); rummiDraft.groups.push([id]); rummiSelected.clear(); render();
+function rummiMoveIdsToGroup(ids,index,g){
+ ids=[...new Set(ids)].filter(id=>g.tiles[id]);
+ ids.forEach(id=>rummiRemoveFromDraft(id));
+ if(!rummiDraft.groups[index])rummiDraft.groups[index]=[];
+ rummiDraft.groups[index].push(...ids);
+ rummiDraft.groups[index]=rummiSortGroup(rummiDraft.groups[index],g);
 }
-function rummiMoveToHand(ev){
- ev.preventDefault(); ev.stopPropagation(); const r=data.partyRooms[roomId],g=r?.game,id=rummiDragged(ev); if(!g||!rummiDraft||!id)return;
- const own=rummiOwnOriginal(g); if(!own.has(id))return alert('내 원래 패가 아닌 타일은 작업 패로 가져올 수 없습니다.');
- rummiRemoveFromDraft(id); rummiDraft.hand.push(id); rummiSelected.clear(); render();
+function rummiPublishDraft(g){
+ if(!g || !rummiDraft || rummiCurrentTurn(g)!==me.id) return;
+ g.liveGroups=(rummiDraft.groups||[]).map(gr=>rummiSortGroup([...gr],g)).filter(gr=>gr.length);
+ g.liveTurn=g.turn;
+}
+async function rummiSyncDraft(){
+ const r=data.partyRooms[roomId],g=r?.game;
+ if(!g||!rummiDraft||rummiCurrentTurn(g)!==me.id)return;
+ rummiPublishDraft(g);
+ await put(ROOM+'/'+roomId,r);
+ await get();
+ render();
+}
+async function rummiMoveToGroup(ev,index){
+ ev.preventDefault(); ev.stopPropagation();
+ const r=data.partyRooms[roomId],g=r?.game,ids=rummiDragged(ev);
+ if(!g||!rummiDraft||!ids.length)return;
+ rummiMoveIdsToGroup(ids,index,g);
+ rummiSelected.clear();
+ render();
+ await rummiSyncDraft();
+}
+async function rummiMoveToNewGroup(ev){
+ ev.preventDefault(); ev.stopPropagation();
+ const r=data.partyRooms[roomId],g=r?.game,ids=rummiDragged(ev);
+ if(!g||!rummiDraft||!ids.length)return;
+ ids=[...new Set(ids)].filter(id=>g.tiles[id]);
+ ids.forEach(id=>rummiRemoveFromDraft(id));
+ rummiDraft.groups.push(rummiSortGroup(ids,g));
+ rummiSelected.clear();
+ render();
+ await rummiSyncDraft();
+}
+async function rummiMoveToHand(ev){
+ ev.preventDefault(); ev.stopPropagation();
+ const r=data.partyRooms[roomId],g=r?.game,ids=rummiDragged(ev);
+ if(!g||!rummiDraft||!ids.length)return;
+ const own=rummiOwnOriginal(g);
+ const allowed=ids.filter(id=>own.has(id));
+ if(allowed.length!==ids.length)return alert('테이블의 패는 내 패로 가져올 수 없습니다.');
+ allowed.forEach(id=>rummiRemoveFromDraft(id));
+ rummiDraft.hand.push(...allowed);
+ rummiSelected.clear();
+ render();
+ await rummiSyncDraft();
 }
 
 function rummiRenderGroup(group,g,index,draft=false){
  const valid=rummiValidGroup(group,g);
+ const draggable=draft;
  return `<div class="rummi-group ${draft?'rummi-drop-zone':''} ${valid?'':'rummi-invalid'}"
-  ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToGroup(event,${index})">
+  ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ${draft?`ondrop="rummiMoveToGroup(event,${index})"`:''}>
   <span class="rummi-group-label">${valid?'조합':'배치중'}</span>
-  ${group.map(id=>{const t=g.tiles[id];return t?rummiTileButton(t,rummiSelected.has(id),!draft,`rummiSelectDraft('${id}')`,true):''}).join('')}
+  ${group.map(id=>{
+    const t=g.tiles[id];
+    return t?rummiTileButton(t,draft&&rummiSelected.has(id),!draft,`rummiSelectDraft('${id}')`,draggable):'';
+  }).join('')}
   ${draft&&!group.length?'<span class="rummi-drop-hint">여기로 패를 끌어오세요</span>':''}
  </div>`;
 }
 
 function drawRummikub(r){
  const g=r.game; if(!g||!g.ids)return `<div class="notice">루미큐브 데이터를 불러오는 중...</div>`;
- /* 구버전/부분 저장 데이터와의 호환: 필수 객체가 없더라도 게임 화면이 죽지 않도록 보정 */
  g.hands = g.hands || {}; g.ids.forEach(id=>{ if(!Array.isArray(g.hands[id])) g.hands[id]=[]; });
- g.opened = g.opened || {}; g.groups = Array.isArray(g.groups)?g.groups:[]; g.deck = Array.isArray(g.deck)?g.deck:[];
+ g.opened = g.opened || {}; g.groups = Array.isArray(g.groups)?g.groups:[];
+ g.deck = Array.isArray(g.deck)?g.deck:[];
  if(typeof g.turn !== 'number') g.turn=0;
  if(!g.turnStartedAt) g.turnStartedAt=Date.now();
  const isMyTurn=rummiCurrentTurn(g)===me.id,isHost=r.host===me.id||isAdmin(),left=rummiTimeLeft(g);
+
  if(g.finished||r.status==='ended')return `<div class="rummi-board"><div class="rummi-title">🎲 루미큐브</div><div class="end-box"><h2>🏆 게임 종료!</h2><p>우승자: <b>${esc(name(g.winner))}</b></p><p>${esc(g.lastAction||'')}</p><div class="row"><button onclick="leaveRoom()">← 로비로 나가기</button>${isHost?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}</div></div></div>`;
- if(isMyTurn)rummiEnsureDraft(g); else if(rummiDraftTurn!==g.turn)rummiResetLocal();
+
+ if(isMyTurn) rummiEnsureDraft(g); else if(rummiDraftTurn!==g.turn) rummiResetLocal();
  if(isMyTurn&&!rummiTimer)rummiTimer=setInterval(rummiLocalClock,1000);
- const playerBar=g.ids.map(id=>`<span class="rummi-player ${id===rummiCurrentTurn(g)?'active':''} ${id===me.id?'me':''}">${id===rummiCurrentTurn(g)?'▶ ':''}${id===r.host?'👑 ':''}${esc(name(id))} · ${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</span>`).join('');
- const draft=rummiDraft&&isMyTurn;
- const groups=draft?rummiDraft.groups:(g.groups||[]),hand=draft?rummiDraft.hand:(g.hands[me.id]||[]);
- const ownOriginal=rummiOwnOriginal(g);
+
+ const currentPlayer=rummiCurrentTurn(g);
+ const liveTable=(g.liveTurn===g.turn && Array.isArray(g.liveGroups)) ? g.liveGroups : (g.groups||[]);
+ const groups=isMyTurn&&rummiDraft ? rummiDraft.groups : liveTable;
+ const hand=rummiDraft&&isMyTurn ? rummiDraft.hand : (g.hands[me.id]||[]);
+ const draft=isMyTurn&&!!rummiDraft;
+
+ const playerBar=g.ids.map(id=>`<span class="rummi-player ${id===currentPlayer?'active':''} ${id===me.id?'me':''}">${id===currentPlayer?'▶ ':''}${id===r.host?'👑 ':''}${esc(name(id))} · ${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</span>`).join('');
  const tableHtml=groups.length?groups.map((gr,i)=>rummiRenderGroup(gr,g,i,draft)).join(''):'<div class="rummi-empty">아직 테이블에 놓인 패가 없습니다.</div>';
+
  return `<div class="rummi-board">
   <div class="rummi-topbar"><div class="rummi-title">🎲 루미큐브</div><div class="rummi-status"><span class="rummi-badge">${isMyTurn?'🟢 내 차례':'⏳ 상대 차례'}</span><span class="rummi-badge rummi-clock ${left<=10?'urgent':''}" id="rummiClock">${left}초</span></div></div>
   <div class="rummi-playerbar">${playerBar}</div>
-  <div class="notice" style="margin:0 0 10px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1)">${isMyTurn?(g.opened[me.id]?'🎯 <b>내 차례</b> — 패를 마우스로 끌어 테이블에 놓고, 끝나면 확정하세요. 테이블 패도 자유롭게 옮길 수 있습니다.':'🔰 <b>최초 등록</b> — 이제 버튼을 누를 필요가 없습니다. 내 패를 마우스로 끌어 테이블에 놓아 합계 30 이상을 만든 뒤 확정하세요.'):`현재 <b>${esc(name(rummiCurrentTurn(g)))}</b>님의 차례입니다.`}</div>
-  <div class="rummi-table" ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)">${tableHtml}<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div></div>
-  ${draft?`<div class="rummi-rack rummi-work-rack" ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToHand(event)"><div class="rummi-rack-title"><span>🪵 작업 패 (${hand.length})</span><span>내 원래 패만 돌아올 수 있음</span></div><div class="rummi-hand">${hand.map(id=>g.tiles[id]?rummiTileButton(g.tiles[id],rummiSelected.has(id),false,`rummiSelectDraft('${id}')`,true):'').join('')}</div></div>`:''}
-  <div class="rummi-actions">${isMyTurn?`<button class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(rummiCurrentTurn(g)))+'님의 차례입니다. '+left+'초</div>'}</div>
-  <div class="rummi-tools"><button onclick="rummiSortNumber()">777 · 숫자순</button><button onclick="rummiSortColor()">789 · 색깔순</button></div>
-  <div class="rummi-help"><b>규칙:</b> 같은 숫자 다른 색 3~4장 / 같은 색 연속 숫자 3장 이상. 최초 등록은 내 패만 사용해 30점 이상. 이후에는 테이블 패를 끌어와 자유롭게 재구성할 수 있습니다. 모든 조합은 확정할 때 유효해야 합니다.</div>
+  <div class="notice" style="margin:0 0 10px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1)">
+   ${isMyTurn?(g.opened[me.id]?'🎯 <b>내 차례</b> — 패를 하나 또는 여러 개 선택해 마우스로 끌어 테이블에 놓으세요. 조커도 빈 숫자 자리에 자동 정렬됩니다.':'🔰 <b>최초 등록</b> — 내 패만 하나 또는 여러 개 선택해 테이블로 끌어 합계 30 이상을 만든 뒤 확정하세요.')
+   :`현재 <b>${esc(name(currentPlayer))}</b>님의 차례입니다. 테이블에 놓는 패는 실시간으로 표시됩니다.`}
+  </div>
+  <div class="rummi-table" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)"`:''}>
+   ${tableHtml}
+   ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
+  </div>
+  <div class="rummi-rack ${draft?'rummi-work-rack':''}">
+   <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 내 패 보기'}</span></div>
+   <div class="rummi-hand">${hand.map(id=>g.tiles[id]?rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,draft):'').join('')}</div>
+  </div>
+  <div class="rummi-actions">${isMyTurn?`<button class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
+  <div class="rummi-tools"><button onclick="rummiSortNumber()">777 · 숫자순</button><button onclick="rummiSortColor()">789 · 색깔순</button><button onclick="rummiClearSelection()">선택 해제</button></div>
+  <div class="rummi-help"><b>규칙:</b> 같은 숫자 다른 색 3~4장 / 같은 색 연속 숫자 3장 이상. 조커는 빠진 숫자를 대신할 수 있으며 연속 조합에서는 그 위치에 자동 정렬됩니다. 최초 등록은 내 패만 사용해 30점 이상. 이후에는 테이블 패를 포함해 자유롭게 재구성할 수 있습니다.</div>
   ${g.lastAction?`<div class="notice" style="margin-bottom:0;background:rgba(0,0,0,.18)">📢 ${esc(g.lastAction)}</div>`:''}
  </div>`;
 }
@@ -2077,21 +2177,26 @@ async function rummiCommitTurn(){
   if(!added&&!changed)return alert('이번 턴에는 최소 한 장의 내 패를 내려놓거나 테이블을 변경해야 합니다.');
  }
  const check=rummiValidateGroups(rummiDraft.groups,g); if(!check.ok)return alert(check.reason);
- g.groups=rummiDraft.groups.map(gr=>rummiSortGroup([...gr],g));
+ g.groups=rummiDraft.groups.map(gr=>rummiSortGroup([...gr],g)).filter(gr=>gr.length);
  g.hands[me.id]=rummiDraft.hand.filter(id=>originalHand.has(id));
+ delete g.liveGroups; delete g.liveTurn;
  rummiResetLocal();
  if(g.hands[me.id].length===0){g.finished=true;g.winner=me.id;r.status='ended';g.lastAction=`🎉 ${name(me.id)}님이 모든 패를 내려놓아 우승했습니다!`;}
  else{g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();g.lastAction=g.lastAction||`${name(me.id)}님이 턴을 확정했습니다.`;}
  await put(ROOM+'/'+roomId,r);await get();render();
 }
-function rummiUndoTurn(){
- const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id)return;rummiDraft=null;rummiDraftTurn=null;rummiSelected.clear();rummiEnsureDraft(g);render();
+async function rummiUndoTurn(){
+ const r=data.partyRooms[roomId],g=r?.game;
+ if(!g||rummiCurrentTurn(g)!==me.id)return;
+ delete g.liveGroups; delete g.liveTurn;
+ rummiResetLocal();
+ await put(ROOM+'/'+roomId,r); await get(); render();
 }
 
 async function rummiDraw(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id)return;
  if(!g.deck.length)return alert('더 이상 먹을 패가 없습니다.');
- const tid=g.deck.pop();g.hands[me.id].push(tid);g.lastDraw={player:me.id,tile:tid};g.lastAction=`${name(me.id)}님이 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();
+ const tid=g.deck.pop();g.hands[me.id].push(tid);delete g.liveGroups; delete g.liveTurn; g.lastDraw={player:me.id,tile:tid};g.lastAction=`${name(me.id)}님이 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();
 }
 function rummiLocalClock(){
  if(!roomId)return;const r=data.partyRooms[roomId];if(!r||r.type!=='rummikub'||r.status!=='playing'||!r.game)return;const g=r.game,left=rummiTimeLeft(g),el=$('rummiClock');if(el){el.textContent=left+'초';el.classList.toggle('urgent',left<=10);}if(rummiCurrentTurn(g)===me.id&&left<=0&&!g.finished&&!rummiTimeoutLock){rummiTimeoutLock=true;rummiAutoTimeout();}
@@ -2100,7 +2205,7 @@ let rummiTimeoutLock=false;
 async function rummiAutoTimeout(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id||rummiTimeLeft(g)>0||g.finished){rummiTimeoutLock=false;return;}
  /* 시간 초과는 현재 배치를 폐기하고 패 1장을 먹은 뒤 다음 턴 */
- if(g.deck.length)g.hands[me.id].push(g.deck.pop());g.lastAction=`${name(me.id)}님이 시간 초과되어 배치를 취소하고 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();rummiTimeoutLock=false;await put(ROOM+'/'+roomId,r);await get();render();
+ if(g.deck.length)g.hands[me.id].push(g.deck.pop());delete g.liveGroups; delete g.liveTurn; g.lastAction=`${name(me.id)}님이 시간 초과되어 배치를 취소하고 패 1장을 먹었습니다.`;g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();rummiResetLocal();rummiTimeoutLock=false;await put(ROOM+'/'+roomId,r);await get();render();
 }
 async function setRummikubTurnLimit(sec){const r=data.partyRooms[roomId];if(!r||r.type!=='rummikub')return;if(r.host!==me.id&&!isAdmin())return alert('방장만 턴 시간을 바꿀 수 있습니다.');if(r.status!=='waiting')return alert('게임 시작 후에는 턴 시간을 바꿀 수 없습니다.');r.turnLimit=sec===60?60:30;r.chat=r.chat||[];r.chat.push({id:'system',text:`⏱️ 루미큐브 턴 제한시간이 ${r.turnLimit===60?'1분':'30초'}로 설정되었습니다.`});await put(ROOM+'/'+roomId,r);await get();render();}
 
