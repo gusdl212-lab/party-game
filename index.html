@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.12</title>
+<title>파티 게임 라운지 v3.13</title>
 
 <style>
 *{
@@ -395,7 +395,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.12
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.13
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1249,7 +1249,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.12)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.13)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -1883,6 +1883,7 @@ let rummiDraftTurn = null;
 let rummiTimer = null;
 let rummiDraggedId = null;
 let rummiDraggedIds = null;
+let rummiHandOrder = []; // 상대 턴에도 내가 정렬한 패 순서를 유지하기 위한 로컬 표시 순서
 
 const RUMMI_COLORS = [
  {k:'red', label:'빨강', code:'R'},
@@ -2030,11 +2031,22 @@ function rummiRemoveFromDraft(id){
 function rummiDraftHas(id){ return (rummiDraft.hand||[]).includes(id)||(rummiDraft.groups||[]).some(gr=>gr.includes(id)); }
 function rummiOwnOriginal(g){ return new Set(g.hands[me.id]||[]); }
 
+function rummiApplyHandOrder(g, hand){
+ const src=[...(hand||[])];
+ if(!rummiHandOrder.length)return src;
+ const present=new Set(src), out=[];
+ rummiHandOrder.forEach(id=>{if(present.has(id)){out.push(id);present.delete(id);}});
+ src.forEach(id=>{if(present.has(id)){out.push(id);present.delete(id);}});
+ rummiHandOrder=out.slice();
+ return out;
+}
+function rummiRememberHandOrder(hand){ rummiHandOrder=[...(hand||[])]; }
+
 function rummiEnsureDraft(g){
  if(rummiCurrentTurn(g)!==me.id)return;
  if(rummiDraft && rummiDraftTurn===g.turn)return;
  /* 첫 등록도 별도의 버튼을 누르는 게 아니라 바로 드래그해서 배치하는 방식 */
- rummiDraft={groups:(g.groups||[]).map(gr=>[...gr]),hand:[...(g.hands[me.id]||[])]};
+ rummiDraft={groups:(g.groups||[]).map(gr=>[...gr]),hand:rummiApplyHandOrder(g,g.hands[me.id]||[])};
  rummiDraftTurn=g.turn; rummiSelected.clear();
 }
 function rummiTileButton(t,selected=false,small=false,onclick='',drag=true){
@@ -2155,7 +2167,7 @@ function drawRummikub(r){
  const currentPlayer=rummiCurrentTurn(g);
  const liveTable=(g.liveTurn===g.turn && Array.isArray(g.liveGroups)) ? g.liveGroups : (g.groups||[]);
  const groups=isMyTurn&&rummiDraft ? rummiDraft.groups : liveTable;
- const hand=rummiDraft&&isMyTurn ? rummiDraft.hand : (g.hands[me.id]||[]);
+ const hand=rummiDraft&&isMyTurn ? rummiDraft.hand : rummiApplyHandOrder(g,g.hands[me.id]||[]);
  const draft=isMyTurn&&!!rummiDraft;
 
  const playerBar=g.ids.map(id=>`<span class="rummi-player ${id===currentPlayer?'active':''} ${id===me.id?'me':''}">${id===currentPlayer?'▶ ':''}${id===r.host?'👑 ':''}${esc(name(id))} · ${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</span>`).join('');
@@ -2189,17 +2201,27 @@ function rummiSelectTable(id){rummiSelectDraft(id)}
 function rummiClearSelection(){rummiSelected.clear();render();}
 
 async function rummiSortNumber(){
- const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id)return;rummiEnsureDraft(g);
- rummiDraft.hand.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(A.j!==B.j)return A.j?1:-1;if(A.n!==B.n)return A.n-B.n;return String(A.c).localeCompare(String(B.c));});render();
+ const r=data.partyRooms[roomId],g=r?.game;if(!g)return;
+ const arr=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:[...(g.hands[me.id]||[])];
+ arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(A.j!==B.j)return A.j?1:-1;if(A.n!==B.n)return A.n-B.n;return String(A.c).localeCompare(String(B.c));});
+ rummiRememberHandOrder(arr);
+ if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr;
+ render();
 }
 async function rummiSortColor(){
- const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id)return;rummiEnsureDraft(g);const order={R:0,B:1,O:2,K:3,J:4};
- rummiDraft.hand.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(order[A.c]!==order[B.c])return order[A.c]-order[B.c];return (A.n||99)-(B.n||99);});render();
+ const r=data.partyRooms[roomId],g=r?.game;if(!g)return;
+ const arr=(rummiDraft&&rummiCurrentTurn(g)===me.id)?rummiDraft.hand:[...(g.hands[me.id]||[])];
+ const order={R:0,B:1,O:2,K:3,J:4};
+ arr.sort((a,b)=>{const A=g.tiles[a],B=g.tiles[b];if(order[A.c]!==order[B.c])return order[A.c]-order[B.c];return (A.n||99)-(B.n||99);});
+ rummiRememberHandOrder(arr);
+ if(rummiDraft&&rummiCurrentTurn(g)===me.id)rummiDraft.hand=arr;
+ render();
 }
 
 /* 첫 등록/일반 턴 모두 하나의 확정 버튼으로 처리 */
 async function rummiCommitTurn(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id||!rummiDraft)return;
+ g.hands=g.hands||{}; g.opened=g.opened||{}; if(!Array.isArray(g.hands[me.id]))g.hands[me.id]=[];
  const originalTable=new Set(rummiAllTableIds(g)), originalHand=new Set(g.hands[me.id]||[]);
  const originalTableJokers=new Set([...originalTable].filter(id=>g.tiles[id]?.j));
  const allSource=new Set([...originalTable,...originalHand]);
@@ -2227,6 +2249,7 @@ async function rummiCommitTurn(){
  const check=rummiValidateGroups(cleanGroups,g); if(!check.ok)return alert(check.reason);
  g.groups=cleanGroups;
  g.hands[me.id]=rummiDraft.hand.filter(id=>originalHand.has(id));
+ rummiRememberHandOrder(g.hands[me.id]);
  delete g.liveGroups; delete g.liveTurn;
  g.consecutivePasses=0;
  rummiResetLocal();
@@ -2263,6 +2286,7 @@ async function rummiDraw(){
  }
  const tid=g.deck.pop();
  g.hands[me.id].push(tid);
+ rummiRememberHandOrder(rummiApplyHandOrder(g,g.hands[me.id]));
  g.consecutivePasses=0;
  delete g.liveGroups; delete g.liveTurn;
  g.lastDraw={player:me.id,tile:tid};
