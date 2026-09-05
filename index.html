@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.18</title>
+<title>파티 게임 라운지 v3.19</title>
 
 <style>
 *{
@@ -24,6 +24,13 @@ body{
  margin:auto;
  padding:24px
 }
+
+/* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
+.app.rummi-app-wide{max-width:1700px}
+.app.rummi-app-wide #roomView > .card{padding:14px 16px}
+.app.rummi-app-wide #roomView .grid.rummi-wide-layout{grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+.app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
+.app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0}
 
 header{
  display:flex;
@@ -394,7 +401,7 @@ input,select,textarea{
 .rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
 
-/* v3.18: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
+/* v3.19: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
 .rummi-shell{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:stretch}
 .rummi-player-rail{
   background:rgba(2,12,30,.46);border:1px solid rgba(255,255,255,.12);border-radius:14px;
@@ -414,10 +421,18 @@ input,select,textarea{
 .rummi-avatar-turn{font-size:10px;color:#62e6b2;font-weight:950;margin-top:3px;min-height:12px}
 .rummi-main{min-width:0}
 .rummi-main .rummi-table{
-  min-height:500px;height:500px;overflow:auto;align-content:flex-start;align-items:flex-start;
+  width:100%;min-height:500px;height:500px;overflow:hidden;align-content:flex-start;align-items:flex-start;
   gap:12px 22px;padding:16px 18px
 }
-.rummi-main .rummi-group{margin:0;flex:0 0 auto}
+.rummi-main .rummi-group{margin:0;flex:0 0 auto;overflow:visible}
+
+/* 테이블에 패가 많아질수록 자동으로 작아져 한눈에 보이게 함.
+   넓은 화면 기준 12장 정도는 기본 크기로 한 줄에 들어가도록 설계. */
+.rummi-table.rummi-density-1 .rummi-tile{min-width:43px;width:43px;height:56px;font-size:21px}
+.rummi-table.rummi-density-2 .rummi-tile{min-width:40px;width:40px;height:52px;font-size:19px}
+.rummi-table.rummi-density-3 .rummi-tile{min-width:36px;width:36px;height:48px;font-size:17px}
+.rummi-table.rummi-density-4 .rummi-tile{min-width:32px;width:32px;height:43px;font-size:15px}
+.rummi-table.rummi-density-3 .rummi-group,.rummi-table.rummi-density-4 .rummi-group{gap:2px;padding:6px 8px}
 .rummi-main .rummi-new-group-drop{flex:0 0 100%;width:100%;box-sizing:border-box}
 .rummi-main .rummi-rack{margin-top:10px}
 .rummi-main .rummi-playerbar{display:none}
@@ -426,7 +441,7 @@ input,select,textarea{
 .rummi-main .rummi-status{justify-content:flex-end}
 .rummi-main .rummi-pause-btn{min-width:126px!important}
 @media(min-width:1200px){
-  .grid.rummi-wide-layout{grid-template-columns:190px minmax(920px,1fr) 270px}
+  .grid.rummi-wide-layout{grid-template-columns:minmax(0,1fr) 300px}
 }
 
 .rummi-modal-note{font-size:13px;color:#dbe8fb}
@@ -438,7 +453,7 @@ input,select,textarea{
  .rummi-shell{grid-template-columns:1fr;gap:8px}
  .rummi-player-rail{flex-direction:row;overflow-x:auto;padding:7px}
  .rummi-avatar-card{min-width:82px}
- .rummi-main .rummi-table{height:430px;min-height:430px}
+ .rummi-main .rummi-table{height:430px;min-height:430px;overflow:hidden}
  .rummi-board{padding:10px}
  .rummi-table{min-height:420px;gap:12px 14px;padding:14px}
  .rummi-hand{grid-template-columns:repeat(10,minmax(0,1fr));gap:5px 3px}
@@ -458,7 +473,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.18
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.19
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -982,6 +997,7 @@ async function sendChat(){
 function renderRoom(r){
  show('roomView');
  const outerGrid=document.querySelector('#roomView .grid'); if(outerGrid) outerGrid.classList.toggle('rummi-wide-layout', r.type==='rummikub');
+ const appRoot=document.querySelector('.app'); if(appRoot) appRoot.classList.toggle('rummi-app-wide', r.type==='rummikub');
  $('roomTitle').innerHTML = `<b>🎮 ${esc(r.title)}</b>`;
 
  $('players').innerHTML = Object.keys(r.players || {}).map(id => {
@@ -1313,7 +1329,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.18)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.19)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -2265,6 +2281,8 @@ function drawRummikub(r){
    <div class="rummi-avatar-count">${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</div>
    <div class="rummi-avatar-turn">${id===currentPlayer?'▶ YOUR TURN':''}</div>
   </div>`).join('');
+ const tableTileCount=groups.reduce((sum,gr)=>sum+(Array.isArray(gr)?gr.length:0),0);
+ const density=tableTileCount<=36?'1':tableTileCount<=60?'2':tableTileCount<=84?'3':'4';
  const tableHtml=groups.length?groups.map((gr,i)=>rummiRenderGroup(gr,g,i,draft)).join(''):'<div class="rummi-empty">아직 테이블에 놓인 패가 없습니다.</div>';
 
  return `<div class="rummi-board">
@@ -2277,7 +2295,7 @@ function drawRummikub(r){
      ${isPaused?'<b>⏸ 게임이 일시정지되었습니다.</b> — 패 배치와 턴 진행은 잠시 멈춰 있습니다.':isMyTurn?(g.opened[me.id]?'🎯 <b>내 차례</b> — 패를 하나 또는 여러 개 선택해 마우스로 끌어 테이블에 놓으세요. 조커도 빈 숫자 자리에 자동 정렬됩니다.':'🔰 <b>최초 등록</b> — 내 패만 하나 또는 여러 개 선택해 테이블로 끌어 합계 30 이상을 만든 뒤 확정하세요.')
      :`현재 <b>${esc(name(currentPlayer))}</b>님의 차례입니다. 테이블에 놓는 패는 실시간으로 표시됩니다.`}
     </div>
-    <div class="rummi-table" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)"`:''}>
+    <div class="rummi-table rummi-density-${density}" data-table-tiles="${tableTileCount}" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)"`:''}>
      ${tableHtml}
      ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
     </div>
