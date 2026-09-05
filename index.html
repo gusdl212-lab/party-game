@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.14</title>
+<title>파티 게임 라운지 v3.15</title>
 
 <style>
 *{
@@ -395,7 +395,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.14
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.15
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1249,7 +1249,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.14)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.15)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -2248,6 +2248,7 @@ async function rummiCommitTurn(){
  const r=data.partyRooms[roomId],g=r?.game;if(!g||rummiCurrentTurn(g)!==me.id||!rummiDraft)return;
  g.hands=g.hands||{}; g.opened=g.opened||{}; if(!Array.isArray(g.hands[me.id]))g.hands[me.id]=[];
  const originalTable=new Set(rummiAllTableIds(g)), originalHand=new Set(g.hands[me.id]||[]);
+ const originalGroups=(g.groups||[]).map(gr=>[...gr]);
  const originalTableJokers=new Set([...originalTable].filter(id=>g.tiles[id]?.j));
  const allSource=new Set([...originalTable,...originalHand]);
  const finalTable=new Set(rummiDraft.groups.flat()), finalHand=new Set(rummiDraft.hand);
@@ -2256,8 +2257,16 @@ async function rummiCommitTurn(){
  if([...finalHand].some(id=>!originalHand.has(id)))
   return alert('테이블의 패는 손패로 가져갈 수 없습니다. 조커를 회수했다면 같은 턴에 반드시 새 조합으로 다시 사용하세요.');
  if(!g.opened[me.id]){
-  if([...finalTable].some(id=>!originalHand.has(id)))return alert('최초 등록에서는 다른 사람이 놓은 패를 사용할 수 없습니다.');
-  const value=rummiInitialValue(rummiDraft.groups,g);
+  // 최초 등록 중에는 기존 테이블 조합을 건드릴 수 없다. 기존 조합은 그대로 남아 있어야 하고,
+  // 새로 만든 조합만 내 원래 손패로 구성되어야 한다.
+  const sameGroup=(a,b)=>a.length===b.length&&a.every(id=>b.includes(id));
+  const untouched=originalGroups.every(oldGr=>rummiDraft.groups.some(newGr=>sameGroup(oldGr,newGr)));
+  if(!untouched)return alert('최초 등록에서는 다른 사람이 이미 놓은 조합을 변경하거나 가져올 수 없습니다. 내 패만 새 조합으로 등록해주세요.');
+  const originalGroupKeys=new Set(originalGroups.map(gr=>[...gr].sort().join('|')));
+  const newGroups=rummiDraft.groups.filter(gr=>!originalGroupKeys.has([...gr].sort().join('|')));
+  if(newGroups.some(gr=>gr.some(id=>!originalHand.has(id))))return alert('최초 등록에서는 다른 사람이 놓은 패를 사용할 수 없습니다. 내 패만 새 조합으로 등록해주세요.');
+  const value=rummiInitialValue(newGroups,g);
+  if(value<30)return alert(`최초 등록 합계가 ${value}점입니다. 30점 이상이어야 합니다.`);
   if(value<30)return alert(`최초 등록 합계가 ${value}점입니다. 30점 이상이어야 합니다.`);
   g.opened[me.id]=true;
   g.lastAction=`${name(me.id)}님이 ${value}점으로 최초 등록에 성공했습니다!`;
