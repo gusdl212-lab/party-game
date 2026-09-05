@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.17</title>
+<title>파티 게임 라운지 v3.18</title>
 
 <style>
 *{
@@ -393,12 +393,52 @@ input,select,textarea{
 .rummi-live-note{font-size:11px;color:#8ff1cb;font-weight:800;margin-left:6px}
 .rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
+
+/* v3.18: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
+.rummi-shell{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:stretch}
+.rummi-player-rail{
+  background:rgba(2,12,30,.46);border:1px solid rgba(255,255,255,.12);border-radius:14px;
+  padding:10px 7px;display:flex;flex-direction:column;gap:9px;min-height:0
+}
+.rummi-avatar-card{
+  border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:8px 5px;text-align:center;
+  background:rgba(255,255,255,.035);opacity:.52;filter:grayscale(.65);transition:.18s
+}
+.rummi-avatar-card.active{
+  opacity:1;filter:none;background:rgba(37,169,154,.2);border-color:#62e6b2;
+  box-shadow:0 0 0 1px rgba(98,230,178,.22),0 0 16px rgba(98,230,178,.16)
+}
+.rummi-avatar{font-size:31px;line-height:1.05;margin-bottom:4px}
+.rummi-avatar-name{font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rummi-avatar-count{font-size:10px;color:#a9c5e7;margin-top:3px}
+.rummi-avatar-turn{font-size:10px;color:#62e6b2;font-weight:950;margin-top:3px;min-height:12px}
+.rummi-main{min-width:0}
+.rummi-main .rummi-table{
+  min-height:500px;height:500px;overflow:auto;align-content:flex-start;align-items:flex-start;
+  gap:12px 22px;padding:16px 18px
+}
+.rummi-main .rummi-group{margin:0;flex:0 0 auto}
+.rummi-main .rummi-new-group-drop{flex:0 0 100%;width:100%;box-sizing:border-box}
+.rummi-main .rummi-rack{margin-top:10px}
+.rummi-main .rummi-playerbar{display:none}
+.rummi-main .rummi-topbar{margin-bottom:9px}
+.rummi-main .rummi-topbar .rummi-title{white-space:nowrap}
+.rummi-main .rummi-status{justify-content:flex-end}
+.rummi-main .rummi-pause-btn{min-width:126px!important}
+@media(min-width:1200px){
+  .grid.rummi-wide-layout{grid-template-columns:190px minmax(920px,1fr) 270px}
+}
+
 .rummi-modal-note{font-size:13px;color:#dbe8fb}
 .rummi-opponent{
   display:flex;justify-content:space-between;align-items:center;
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 @media(max-width:800px){
+ .rummi-shell{grid-template-columns:1fr;gap:8px}
+ .rummi-player-rail{flex-direction:row;overflow-x:auto;padding:7px}
+ .rummi-avatar-card{min-width:82px}
+ .rummi-main .rummi-table{height:430px;min-height:430px}
  .rummi-board{padding:10px}
  .rummi-table{min-height:420px;gap:12px 14px;padding:14px}
  .rummi-hand{grid-template-columns:repeat(10,minmax(0,1fr));gap:5px 3px}
@@ -418,7 +458,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.17
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.18
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -941,6 +981,7 @@ async function sendChat(){
 
 function renderRoom(r){
  show('roomView');
+ const outerGrid=document.querySelector('#roomView .grid'); if(outerGrid) outerGrid.classList.toggle('rummi-wide-layout', r.type==='rummikub');
  $('roomTitle').innerHTML = `<b>🎮 ${esc(r.title)}</b>`;
 
  $('players').innerHTML = Object.keys(r.players || {}).map(id => {
@@ -1272,7 +1313,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.17)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.18)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -2217,29 +2258,39 @@ function drawRummikub(r){
  const hand=rummiDraft&&isMyTurn ? rummiDraft.hand : rummiApplyHandOrder(g,g.hands[me.id]||[]);
  const draft=isMyTurn&&!isPaused&&!!rummiDraft;
 
- const playerBar=g.ids.map(id=>`<span class="rummi-player ${id===currentPlayer?'active':''} ${id===me.id?'me':''}">${id===currentPlayer?'▶ ':''}${id===r.host?'👑 ':''}${esc(name(id))} · ${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</span>`).join('');
+ const avatars=['🧑‍💼','👩‍💼','🧑‍🎨','👩‍🎨'];
+ const playerRail=g.ids.map((id,idx)=>`<div class="rummi-avatar-card ${id===currentPlayer?'active':''}">
+   <div class="rummi-avatar">${avatars[idx%avatars.length]}</div>
+   <div class="rummi-avatar-name">${id===r.host?'👑 ':''}${esc(name(id))}</div>
+   <div class="rummi-avatar-count">${g.hands[id]?.length||0}장 ${g.opened[id]?'✓':'🔒'}</div>
+   <div class="rummi-avatar-turn">${id===currentPlayer?'▶ YOUR TURN':''}</div>
+  </div>`).join('');
  const tableHtml=groups.length?groups.map((gr,i)=>rummiRenderGroup(gr,g,i,draft)).join(''):'<div class="rummi-empty">아직 테이블에 놓인 패가 없습니다.</div>';
 
  return `<div class="rummi-board">
-  <div class="rummi-topbar"><div class="rummi-title">🎲 루미큐브</div><div class="rummi-status"><span class="rummi-badge">${g.paused?'⏸ 일시정지':(isMyTurn?'🟢 내 차례':'⏳ 상대 차례')}</span><span class="rummi-badge rummi-clock ${left<=10&&!g.paused?'urgent':''}" id="rummiClock">${left}초</span><button type="button" class="${g.paused?(g.pausedBy===me.id?'mint':''):'danger'} rummi-pause-btn" ${g.paused&&g.pausedBy!==me.id?'disabled':''} onclick="togglePauseRummikub()">${g.paused?(g.pausedBy===me.id?'▶ 일시정지 해제':'🔒 해제 권한 없음'):'⏸ 일시정지 (ESC)'}</button></div></div>
-  <div class="rummi-playerbar">${playerBar}</div>
-  ${g.paused?`<div class="notice rummi-paused-banner">⏸ 게임이 일시정지되었습니다. ${g.pausedBy===me.id?'▶ 일시정지한 사람인 내가 해제할 수 있습니다.':'🔒 '+esc(name(g.pausedBy))+'님이 해제할 수 있습니다.'}</div>`:''}
-  <div class="notice" style="margin:0 0 10px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1)">
-   ${isPaused?'<b>⏸ 게임이 일시정지되었습니다.</b> — 패 배치와 턴 진행은 잠시 멈춰 있습니다.':isMyTurn?(g.opened[me.id]?'🎯 <b>내 차례</b> — 패를 하나 또는 여러 개 선택해 마우스로 끌어 테이블에 놓으세요. 조커도 빈 숫자 자리에 자동 정렬됩니다.':'🔰 <b>최초 등록</b> — 내 패만 하나 또는 여러 개 선택해 테이블로 끌어 합계 30 이상을 만든 뒤 확정하세요.')
-   :`현재 <b>${esc(name(currentPlayer))}</b>님의 차례입니다. 테이블에 놓는 패는 실시간으로 표시됩니다.`}
+  <div class="rummi-shell">
+   <aside class="rummi-player-rail">${playerRail}</aside>
+   <div class="rummi-main">
+    <div class="rummi-topbar"><div class="rummi-title">🎲 루미큐브</div><div class="rummi-status"><span class="rummi-badge">${g.paused?'⏸ 일시정지':(isMyTurn?'🟢 내 차례':'⏳ 상대 차례')}</span><span class="rummi-badge rummi-clock ${left<=10&&!g.paused?'urgent':''}" id="rummiClock">${left}초</span><button type="button" class="${g.paused?(g.pausedBy===me.id?'mint':''):'danger'} rummi-pause-btn" ${g.paused&&g.pausedBy!==me.id?'disabled':''} onclick="togglePauseRummikub()">${g.paused?(g.pausedBy===me.id?'▶ 일시정지 해제':'🔒 해제 권한 없음'):'⏸ 일시정지 (ESC)'}</button></div></div>
+    ${g.paused?`<div class="notice rummi-paused-banner">⏸ 게임이 일시정지되었습니다. ${g.pausedBy===me.id?'▶ 일시정지한 사람인 내가 해제할 수 있습니다.':'🔒 '+esc(name(g.pausedBy))+'님이 해제할 수 있습니다.'}</div>`:''}
+    <div class="notice" style="margin:0 0 10px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.1)">
+     ${isPaused?'<b>⏸ 게임이 일시정지되었습니다.</b> — 패 배치와 턴 진행은 잠시 멈춰 있습니다.':isMyTurn?(g.opened[me.id]?'🎯 <b>내 차례</b> — 패를 하나 또는 여러 개 선택해 마우스로 끌어 테이블에 놓으세요. 조커도 빈 숫자 자리에 자동 정렬됩니다.':'🔰 <b>최초 등록</b> — 내 패만 하나 또는 여러 개 선택해 테이블로 끌어 합계 30 이상을 만든 뒤 확정하세요.')
+     :`현재 <b>${esc(name(currentPlayer))}</b>님의 차례입니다. 테이블에 놓는 패는 실시간으로 표시됩니다.`}
+    </div>
+    <div class="rummi-table" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)"`:''}>
+     ${tableHtml}
+     ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
+    </div>
+    <div class="rummi-rack ${draft?'rummi-work-rack rummi-drop-zone':''}" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToHand(event)"`:''}>
+     <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 777/789 정렬 및 패 순서 변경 가능'}</span></div>
+     <div class="rummi-hand" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)"`:''}>${hand.map(id=>g.tiles[id]?`<span class="rummi-rack-slot" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)" ondrop="rummiRackDrop(event,'${id}')"`:''}>${rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,true)}</span>`:'').join('')}</div>
+    </div>
+    <div class="rummi-actions">${isMyTurn&&!isPaused?`<button type="button" class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button type="button" class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button type="button" onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
+    <div class="rummi-tools"><button type="button" onclick="rummiSortNumber()">777 · 숫자순</button><button type="button" onclick="rummiSortColor()">789 · 색깔순</button><button type="button" onclick="rummiClearSelection()">선택 해제</button></div>
+    <div class="rummi-help"><b>정식 규칙:</b> 그룹은 같은 숫자·서로 다른 색 3~4장, 런은 같은 색 연속 숫자 3장 이상입니다. 최초 등록은 내 패만으로 30점 이상이며 조커도 사용할 수 있습니다. 최초 등록 후에는 테이블을 자유롭게 재배열할 수 있지만 그 턴에 내 패를 최소 1장 사용해야 합니다. 테이블의 조커는 초기 등록 전에는 회수할 수 없고, 회수한 조커는 같은 턴에 반드시 새 조합으로 다시 사용해야 합니다. 방금 먹은 패는 다음 턴부터 사용할 수 있습니다.</div>
+    ${g.lastAction?`<div class="notice" style="margin-bottom:0;background:rgba(0,0,0,.18)">📢 ${esc(g.lastAction)}</div>`:''}
+   </div>
   </div>
-  <div class="rummi-table" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToNewGroup(event)"`:''}>
-   ${tableHtml}
-   ${draft?'<div class="rummi-new-group-drop">＋ 새 조합 만들기 · 패를 여기에 끌어오세요</div>':''}
-  </div>
-  <div class="rummi-rack ${draft?'rummi-work-rack rummi-drop-zone':''}" ${draft?`ondragover="rummiDragOver(event)" ondragleave="rummiDragLeave(event)" ondrop="rummiMoveToHand(event)"`:''}>
-   <div class="rummi-rack-title"><span>🪵 내 패 (${hand.length})</span><span>${isMyTurn?'여러 장 선택 후 한 번에 드래그 가능':'상대 차례 · 777/789 정렬 및 패 순서 변경 가능'}</span></div>
-   <div class="rummi-hand" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)"`:''}>${hand.map(id=>g.tiles[id]?`<span class="rummi-rack-slot" ${!draft?`ondragover="rummiRackDragOver(event)" ondragleave="rummiRackDragLeave(event)" ondrop="rummiRackDrop(event,'${id}')"`:''}>${rummiTileButton(g.tiles[id],draft&&rummiSelected.has(id),false,draft?`rummiSelectDraft('${id}')`:'' ,true)}</span>`:'').join('')}</div>
-  </div>
-  <div class="rummi-actions">${isMyTurn&&!isPaused?`<button type="button" class="gold" onclick="rummiCommitTurn()">✅ 내려놓기 / 턴 확정</button><button type="button" class="danger" onclick="rummiUndoTurn()">↩️ 되돌리기</button><button type="button" onclick="rummiDraw()">➕ 패 1장 먹기</button>`:'<div class="notice" style="margin:0;width:100%">⏳ '+esc(name(currentPlayer))+'님의 차례입니다. '+left+'초 · 내 패는 계속 보입니다.</div>'}</div>
-  <div class="rummi-tools"><button type="button" onclick="rummiSortNumber()">777 · 숫자순</button><button type="button" onclick="rummiSortColor()">789 · 색깔순</button><button type="button" onclick="rummiClearSelection()">선택 해제</button></div>
-  <div class="rummi-help"><b>정식 규칙:</b> 그룹은 같은 숫자·서로 다른 색 3~4장, 런은 같은 색 연속 숫자 3장 이상입니다. 최초 등록은 내 패만으로 30점 이상이며 조커도 사용할 수 있습니다. 최초 등록 후에는 테이블을 자유롭게 재배열할 수 있지만 그 턴에 내 패를 최소 1장 사용해야 합니다. 테이블의 조커는 초기 등록 전에는 회수할 수 없고, 회수한 조커는 같은 턴에 반드시 새 조합으로 다시 사용해야 합니다. 방금 먹은 패는 다음 턴부터 사용할 수 있습니다.</div>
-  ${g.lastAction?`<div class="notice" style="margin-bottom:0;background:rgba(0,0,0,.18)">📢 ${esc(g.lastAction)}</div>`:''}
  </div>`;
 }
 
