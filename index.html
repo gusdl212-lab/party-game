@@ -244,6 +244,10 @@ input,select,textarea{
 }
 .davinci-revealed.red{color:#c53c4b}
 .davinci-revealed.blue{color:#2585bd}
+.davinci-my-tiles .tile{user-select:none}
+.davinci-joker-draggable{cursor:grab!important;border-style:dashed!important}
+.davinci-joker-draggable:active{cursor:grabbing!important}
+.davinci-drop-target{transform:translateY(-3px);box-shadow:0 0 0 3px rgba(255,209,102,.55)!important}
 .davinci-guess-notice{
  border:2px solid #62e6b2;
  background:#142c2a;
@@ -1142,6 +1146,9 @@ function shuffle(arr){
 }
 
 /* ================= 다빈치 코드 로직 ================= */
+// 조커는 자동 정렬 대상이 아니라, 각 플레이어가 원하는 위치에 직접 배치할 수 있습니다.
+let davinciDraggingJoker = null;
+
 function createDavinci(ids){
  let deck = [];
  for(let n = 0; n < 12; n++){
@@ -1155,7 +1162,8 @@ function createDavinci(ids){
  deck = shuffle(deck);
  let hands = {};
  ids.forEach(id => {
-  hands[id] = deck.splice(0, 4).sort(tileSort);
+  // 숫자패만 오름차순으로 정리하고, 조커는 원래 섞여 나온 위치를 유지합니다.
+  hands[id] = davinciSortHandWithJokers(deck.splice(0, 4));
  });
  return {
   ids: ids,
@@ -1173,7 +1181,11 @@ function tileNumber(tile){
  return m ? Number(m[0]) : 999;
 }
 
-function tileSort(a, b){
+function isDavinciJoker(tile){
+ return String(tile).includes('조커');
+}
+
+function davinciTileSortNumbers(a, b){
  const na = tileNumber(a);
  const nb = tileNumber(b);
  if(na !== nb) return na - nb;
@@ -1184,6 +1196,43 @@ function tileSort(a, b){
  if(aRed !== bRed) return aRed ? -1 : 1;
 
  return String(a).localeCompare(String(b), 'ko');
+}
+
+// 숫자패는 자동 정렬하되, 조커가 들어가 있던 위치는 그대로 유지합니다.
+// 예: [1, 조커, 5, 7] -> [1, 조커, 5, 7]
+// 예: [7, 조커, 1, 5] -> [1, 조커, 5, 7]
+function davinciSortHandWithJokers(hand){
+ const arr = [...hand];
+ const jokers = [];
+ const numberTiles = [];
+
+ arr.forEach((tile, index) => {
+  if(isDavinciJoker(tile)) jokers.push({tile, index});
+  else numberTiles.push(tile);
+ });
+ numberTiles.sort(davinciTileSortNumbers);
+
+ // 조커가 있던 위치에 정렬된 숫자패를 채워 넣습니다.
+ let numberIndex = 0;
+ const out = [];
+ for(let i = 0; i < arr.length; i++){
+  const joker = jokers.find(j => j.index === i);
+  if(joker){
+   out.push(joker.tile);
+  }else{
+   out.push(numberTiles[numberIndex++]);
+  }
+ }
+ return out;
+}
+
+// 기존 코드와의 호환을 위해 유지
+function tileSort(a, b){
+ if(isDavinciJoker(a) || isDavinciJoker(b)){
+  if(isDavinciJoker(a) && isDavinciJoker(b)) return 0;
+  return isDavinciJoker(a) ? 1 : -1;
+ }
+ return davinciTileSortNumbers(a, b);
 }
 
 function davinciTileKey(tile){
@@ -1247,13 +1296,26 @@ function drawDavinci(r){
   `).join('')}
 
   <h3>내 타일</h3>
-  <div class="tiles">
-   ${my.map(x => {
+  <div class="tiles davinci-my-tiles">
+   ${my.map((x, i) => {
     const key = davinciTileKey(x);
     const isRev = !!(g.revealed[me.id] && (g.revealed[me.id][key]));
-    return `<span class="tile ${davinciTileClass(x)} ${isRev ? 'davinci-revealed' : ''}">${isRev ? '✓ ' : ''}${esc(x)}</span>`;
+    const isJoker = isDavinciJoker(x);
+    return `
+     <span
+      class="tile ${davinciTileClass(x)} ${isRev ? 'davinci-revealed' : ''} ${isJoker ? 'davinci-joker-draggable' : ''}"
+      ${isJoker ? `draggable="true" ondragstart="startDavinciJokerDrag('${esc(x)}', event)" ondragend="endDavinciJokerDrag()"` : ''}
+      ondragover="event.preventDefault(); this.classList.add('davinci-drop-target')"
+      ondragleave="this.classList.remove('davinci-drop-target')"
+      ondrop="dropDavinciJoker(event, ${i})"
+      title="${isJoker ? '드래그해서 원하는 위치에 조커를 놓으세요.' : '조커를 이 패의 앞에 놓을 수 있습니다.'}"
+     >${isRev ? '✓ ' : ''}${esc(x)}</span>
+    `;
    }).join('')}
   </div>
+  <p class="small" style="margin-top:10px">
+   🔴/🔵 조커는 <b>드래그해서 원하는 위치에 놓을 수 있습니다.</b> 숫자패는 같은 숫자일 경우 빨강 → 파랑 순서로 자동 정렬됩니다.
+  </p>
 
   <div class="row" style="margin-top:15px">
    <button ${!isMyTurn || !g.deck.length ? 'disabled' : ''} onclick="drawDavinciTile()">
@@ -1264,6 +1326,50 @@ function drawDavinci(r){
  `;
 }
 
+function startDavinciJokerDrag(tile, event){
+ if(!isDavinciJoker(tile)) return;
+ davinciDraggingJoker = tile;
+ if(event?.dataTransfer){
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', tile);
+ }
+}
+
+function endDavinciJokerDrag(){
+ davinciDraggingJoker = null;
+ document.querySelectorAll('.davinci-drop-target').forEach(el => el.classList.remove('davinci-drop-target'));
+}
+
+async function dropDavinciJoker(event, targetIndex){
+ event.preventDefault();
+ event.stopPropagation();
+ document.querySelectorAll('.davinci-drop-target').forEach(el => el.classList.remove('davinci-drop-target'));
+
+ const tile = davinciDraggingJoker || event.dataTransfer?.getData('text/plain');
+ davinciDraggingJoker = null;
+ if(!tile || !isDavinciJoker(tile)) return;
+
+ const r = data.partyRooms[roomId];
+ if(!r || !r.game || !r.game.hands || !r.game.hands[me.id]) return;
+
+ const hand = r.game.hands[me.id];
+ const fromIndex = hand.indexOf(tile);
+ if(fromIndex < 0) return;
+
+ // 같은 위치에 놓았으면 아무것도 하지 않습니다.
+ if(fromIndex === targetIndex || fromIndex === targetIndex - 1) return;
+
+ hand.splice(fromIndex, 1);
+ let insertIndex = targetIndex;
+ if(fromIndex < targetIndex) insertIndex--;
+ insertIndex = Math.max(0, Math.min(insertIndex, hand.length));
+ hand.splice(insertIndex, 0, tile);
+
+ await put(ROOM + '/' + roomId, r);
+ await get();
+ render();
+}
+
 async function drawDavinciTile(){
  const r = data.partyRooms[roomId];
  const g = r.game;
@@ -1272,7 +1378,8 @@ async function drawDavinciTile(){
 
  const tile = g.deck.pop();
  g.hands[me.id].push(tile);
- g.hands[me.id].sort(tileSort);
+ // 새 타일을 넣을 때도 기존 조커 위치는 그대로 유지합니다.
+ g.hands[me.id] = davinciSortHandWithJokers(g.hands[me.id]);
  g.turn = (g.turn + 1) % g.ids.length;
 
  await put(ROOM + '/' + roomId, r);
@@ -1293,7 +1400,7 @@ async function guessDavinci(id, index){
  const isAlreadyRevealed = !!(g.revealed?.[id]?.[davinciTileKey(targetTile)] || g.revealed?.[id]?.[index]);
  if(isAlreadyRevealed) return;
 
- const isJoker = String(targetTile).includes('조커');
+ const isJoker = isDavinciJoker(targetTile);
  const promptText = isJoker
   ? name(id) + '님의 ' + (index + 1) + '번째 타일이 조커라고 생각하나요?\\n조커라고 입력하면 정답으로 처리됩니다.'
   : name(id) + '님의 ' + (index + 1) + '번째 타일 숫자를 입력하세요.\\n(0~11)';
@@ -1312,10 +1419,8 @@ async function guessDavinci(id, index){
   // 타일 자체를 키로 저장해, 이후 손패 정렬/타일 추가가 있어도 표시가 유지되도록 함.
   g.revealed[id][davinciTileKey(targetTile)] = true;
 
-  // 모두 공개되었는지는 현재 손패 기준으로 확인
   const allOpen = targetHand.every(tile => !!g.revealed[id][davinciTileKey(tile)]);
 
-  // 모든 플레이어가 정답을 알 수 있도록 마지막 정답 정보를 공개 상태에 기록
   g.lastGuess = {
    guesser: me.id,
    target: id,
