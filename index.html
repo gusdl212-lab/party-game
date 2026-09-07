@@ -1308,13 +1308,13 @@ function drawDavinci(r){
       ondragover="event.preventDefault(); this.classList.add('davinci-drop-target')"
       ondragleave="this.classList.remove('davinci-drop-target')"
       ondrop="dropDavinciJoker(event, ${i})"
-      title="${isJoker ? '드래그해서 원하는 위치에 조커를 놓으세요.' : '조커를 이 패의 앞에 놓을 수 있습니다.'}"
+      title="드래그해서 원하는 위치에 놓을 수 있습니다."
      >${isRev ? '✓ ' : ''}${esc(x)}</span>
     `;
    }).join('')}
   </div>
   <p class="small" style="margin-top:10px">
-   🔴/🔵 조커는 <b>드래그해서 원하는 위치에 놓을 수 있습니다.</b> 숫자패는 같은 숫자일 경우 빨강 → 파랑 순서로 자동 정렬됩니다.
+   숫자패는 같은 숫자일 경우 빨강 → 파랑 순서로 자동 정렬됩니다.
   </p>
 
   <div class="row" style="margin-top:15px">
