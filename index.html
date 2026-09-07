@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.21</title>
+<title>파티 게임 라운지 v3.22</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.21: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.22: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.21: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.22: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.21: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.22: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -1401,9 +1401,8 @@ async function guessDavinci(id, index){
  if(isAlreadyRevealed) return;
 
  const isJoker = isDavinciJoker(targetTile);
- const promptText = isJoker
-  ? name(id) + '님의 ' + (index + 1) + '번째 타일이 조커라고 생각하나요?\\n조커라고 입력하면 정답으로 처리됩니다.'
-  : name(id) + '님의 ' + (index + 1) + '번째 타일 숫자를 입력하세요.\\n(0~11)';
+ // 상대에게 타일 종류를 미리 알려주지 않도록 모든 타일에 같은 추리 문구를 사용합니다.
+ const promptText = name(id) + '님의 ' + (index + 1) + '번째 타일 숫자를 입력하세요.\n(0~11)';
 
  const answer = prompt(promptText);
  if(answer === null) return;
