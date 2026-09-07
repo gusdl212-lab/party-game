@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.22</title>
+<title>파티 게임 라운지 v3.23</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.22: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.23: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.22: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.23: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.22: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.23: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.20
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.23
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1172,6 +1172,8 @@ function createDavinci(ids){
   turn: 0,
   revealed: {},
   lastGuess: null,
+  // 각 조커는 플레이어별로 딱 한 번만 위치를 옮길 수 있습니다.
+  jokerMoved: {},
   finished: false
  };
 }
@@ -1183,6 +1185,14 @@ function tileNumber(tile){
 
 function isDavinciJoker(tile){
  return String(tile).includes('조커');
+}
+
+function davinciJokerKey(tile){
+ return String(tile);
+}
+
+function davinciJokerHasMoved(g, tile){
+ return !!(g.jokerMoved && g.jokerMoved[davinciJokerKey(tile)]);
 }
 
 function davinciTileSortNumbers(a, b){
@@ -1304,17 +1314,17 @@ function drawDavinci(r){
     return `
      <span
       class="tile ${davinciTileClass(x)} ${isRev ? 'davinci-revealed' : ''} ${isJoker ? 'davinci-joker-draggable' : ''}"
-      ${isJoker ? `draggable="true" ondragstart="startDavinciJokerDrag('${esc(x)}', event)" ondragend="endDavinciJokerDrag()"` : ''}
+      ${isJoker && !davinciJokerHasMoved(g, x) ? `draggable="true" ondragstart="startDavinciJokerDrag('${esc(x)}', event)" ondragend="endDavinciJokerDrag()"` : ''}
       ondragover="event.preventDefault(); this.classList.add('davinci-drop-target')"
       ondragleave="this.classList.remove('davinci-drop-target')"
       ondrop="dropDavinciJoker(event, ${i})"
-      title="드래그해서 원하는 위치에 놓을 수 있습니다."
+      title="${isJoker && davinciJokerHasMoved(g, x) ? '이미 위치를 한 번 변경했습니다.' : isJoker ? '위치를 한 번 변경할 수 있습니다.' : ''}"
      >${isRev ? '✓ ' : ''}${esc(x)}</span>
     `;
    }).join('')}
   </div>
   <p class="small" style="margin-top:10px">
-   숫자패는 같은 숫자일 경우 빨강 → 파랑 순서로 자동 정렬됩니다.
+   숫자패는 같은 숫자일 경우 빨강 → 파랑 순서로 자동 정렬됩니다. 위치를 옮긴 조커는 다시 이동할 수 없습니다.
   </p>
 
   <div class="row" style="margin-top:15px">
@@ -1327,7 +1337,8 @@ function drawDavinci(r){
 }
 
 function startDavinciJokerDrag(tile, event){
- if(!isDavinciJoker(tile)) return;
+ const r = data.partyRooms[roomId];
+ if(!isDavinciJoker(tile) || !r?.game || davinciJokerHasMoved(r.game, tile)) return;
  davinciDraggingJoker = tile;
  if(event?.dataTransfer){
   event.dataTransfer.effectAllowed = 'move';
@@ -1352,11 +1363,17 @@ async function dropDavinciJoker(event, targetIndex){
  const r = data.partyRooms[roomId];
  if(!r || !r.game || !r.game.hands || !r.game.hands[me.id]) return;
 
- const hand = r.game.hands[me.id];
+ const g = r.game;
+ const hand = g.hands[me.id];
  const fromIndex = hand.indexOf(tile);
  if(fromIndex < 0) return;
 
- // 같은 위치에 놓았으면 아무것도 하지 않습니다.
+ // 각 조커는 실제로 위치를 변경할 수 있는 기회가 딱 한 번입니다.
+ g.jokerMoved = g.jokerMoved || {};
+ const jokerKey = davinciJokerKey(tile);
+ if(g.jokerMoved[jokerKey]) return;
+
+ // 같은 위치에 놓았으면 이동한 것으로 처리하지 않습니다.
  if(fromIndex === targetIndex || fromIndex === targetIndex - 1) return;
 
  hand.splice(fromIndex, 1);
@@ -1364,6 +1381,9 @@ async function dropDavinciJoker(event, targetIndex){
  if(fromIndex < targetIndex) insertIndex--;
  insertIndex = Math.max(0, Math.min(insertIndex, hand.length));
  hand.splice(insertIndex, 0, tile);
+
+ // 이동이 완료된 조커는 다시 드래그할 수 없습니다.
+ g.jokerMoved[jokerKey] = true;
 
  await put(ROOM + '/' + roomId, r);
  await get();
