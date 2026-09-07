@@ -237,6 +237,22 @@ input,select,textarea{
  color:#2585bd
 }
 
+.davinci-revealed{
+ border:3px solid #62e6b2!important;
+ box-shadow:0 0 0 2px rgba(98,230,178,.18),0 0 12px rgba(98,230,178,.22);
+ cursor:default!important;
+}
+.davinci-revealed.red{color:#c53c4b}
+.davinci-revealed.blue{color:#2585bd}
+.davinci-guess-notice{
+ border:2px solid #62e6b2;
+ background:#142c2a;
+ color:#d9fff1;
+ font-size:15px;
+}
+.davinci-guess-notice .red{color:#ff6b78}
+.davinci-guess-notice .blue{color:#55b9ff}
+
 .map-box{
  border:1px solid #4a5c8b;
  background:#111827;
@@ -1132,6 +1148,10 @@ function createDavinci(ids){
   deck.push('🔴 ' + n);
   deck.push('🔵 ' + n);
  }
+ // 조커는 빨강 1장, 파랑 1장
+ deck.push('🔴 조커');
+ deck.push('🔵 조커');
+
  deck = shuffle(deck);
  let hands = {};
  ids.forEach(id => {
@@ -1143,28 +1163,57 @@ function createDavinci(ids){
   deck: deck,
   turn: 0,
   revealed: {},
+  lastGuess: null,
   finished: false
  };
 }
 
 function tileNumber(tile){
  const m = String(tile).match(/\d+/);
- return m ? Number(m[0]) : 0;
+ return m ? Number(m[0]) : 999;
 }
 
 function tileSort(a, b){
- return tileNumber(a) - tileNumber(b);
+ const na = tileNumber(a);
+ const nb = tileNumber(b);
+ if(na !== nb) return na - nb;
+
+ // 같은 숫자라면 빨간색을 먼저 배치
+ const aRed = String(a).startsWith('🔴 ');
+ const bRed = String(b).startsWith('🔴 ');
+ if(aRed !== bRed) return aRed ? -1 : 1;
+
+ return String(a).localeCompare(String(b), 'ko');
+}
+
+function davinciTileKey(tile){
+ return String(tile);
+}
+
+function davinciTileClass(tile){
+ const s = String(tile);
+ return s.startsWith('🔴 ') ? 'red' : 'blue';
 }
 
 function drawDavinci(r){
  const g = r.game;
  if(!g || !g.ids) return `<div class="notice">게임 데이터를 불러오는 중...</div>`;
- 
+
  g.revealed = g.revealed || {};
  const turn = g.ids[g.turn % g.ids.length];
  const my = g.hands[me.id] || [];
  const opponents = g.ids.filter(id => id !== me.id);
  const isMyTurn = (turn === me.id);
+
+ const lastGuessHtml = g.lastGuess ? `
+  <div class="notice davinci-guess-notice">
+   🎯 <b>${esc(name(g.lastGuess.guesser))}</b>님이
+   <b>${esc(name(g.lastGuess.target))}</b>님의
+   <b>${g.lastGuess.index + 1}번째 패</b>
+   <span class="${davinciTileClass(g.lastGuess.tile)}"><b>${esc(g.lastGuess.tile)}</b></span>를
+   <b>맞혔습니다!</b>
+  </div>
+ ` : '';
 
  return `
   <h2>🧩 다빈치 코드</h2>
@@ -1172,16 +1221,24 @@ function drawDavinci(r){
    ${isMyTurn ? '🟢 당신의 차례입니다!' : '⏳ ' + esc(name(turn)) + '님의 차례입니다.'}
   </div>
 
+  ${lastGuessHtml}
+
   <h3>상대 타일</h3>
   ${opponents.map(id => `
    <div class="notice">
     <b>${esc(name(id))}</b><br>
     <div class="tiles">
      ${(g.hands[id] || []).map((x, i) => {
-      const isRev = g.revealed[id] && g.revealed[id][i];
+      const key = davinciTileKey(x);
+      // 새 방식은 타일 자체를 키로 사용해, 패를 다시 정렬해도 맞춘 패 표시가 유지됨.
+      // 기존 게임 데이터의 index 방식도 호환.
+      const isRev = !!(g.revealed[id] && (g.revealed[id][key] || g.revealed[id][i]));
       return `
-       <button class="tile ${x.startsWith('🔴')?'red':'blue'}" ${!isMyTurn ? 'disabled' : ''} onclick="guessDavinci('${id}',${i})">
-        ${isRev ? esc(x) : '?'}
+       <button
+        class="tile ${davinciTileClass(x)} ${isRev ? 'davinci-revealed' : ''}"
+        ${!isMyTurn || isRev ? 'disabled' : ''}
+        onclick="guessDavinci('${id}',${i})">
+        ${isRev ? '✓ ' + esc(x) : '?'}
        </button>
       `;
      }).join('')}
@@ -1191,15 +1248,16 @@ function drawDavinci(r){
 
   <h3>내 타일</h3>
   <div class="tiles">
-   ${my.map(x => `<span class="tile ${x.startsWith('🔴')?'red':'blue'}">${esc(x)}</span>`).join('')}
+   ${my.map(x => {
+    const key = davinciTileKey(x);
+    const isRev = !!(g.revealed[me.id] && (g.revealed[me.id][key]));
+    return `<span class="tile ${davinciTileClass(x)} ${isRev ? 'davinci-revealed' : ''}">${isRev ? '✓ ' : ''}${esc(x)}</span>`;
+   }).join('')}
   </div>
 
   <div class="row" style="margin-top:15px">
    <button ${!isMyTurn || !g.deck.length ? 'disabled' : ''} onclick="drawDavinciTile()">
     타일 뽑기 (${g.deck.length})
-   </button>
-   <button class="mint" ${!isMyTurn ? 'disabled' : ''} onclick="passDavinciTurn()">
-    추리 안 함
    </button>
   </div>
   <p class="small" style="margin-top:10px">상대의 ? 타일을 눌러 숫자를 추리하세요.</p>
@@ -1222,35 +1280,50 @@ async function drawDavinciTile(){
  render();
 }
 
-async function passDavinciTurn(){
- const r = data.partyRooms[roomId];
- const g = r.game;
- const turn = g.ids[g.turn % g.ids.length];
- if(turn !== me.id) return;
-
- g.turn = (g.turn + 1) % g.ids.length;
- await put(ROOM + '/' + roomId, r);
- await get();
- render();
-}
-
 async function guessDavinci(id, index){
  const r = data.partyRooms[roomId];
  const g = r.game;
  const turn = g.ids[g.turn % g.ids.length];
  if(turn !== me.id) return;
 
- const answer = prompt(name(id) + '님의 ' + (index + 1) + '번째 타일 숫자를 입력하세요.\n(0~11)');
+ const targetHand = g.hands[id] || [];
+ const targetTile = targetHand[index];
+ if(!targetTile) return;
+
+ const isAlreadyRevealed = !!(g.revealed?.[id]?.[davinciTileKey(targetTile)] || g.revealed?.[id]?.[index]);
+ if(isAlreadyRevealed) return;
+
+ const isJoker = String(targetTile).includes('조커');
+ const promptText = isJoker
+  ? name(id) + '님의 ' + (index + 1) + '번째 타일이 조커라고 생각하나요?\\n조커라고 입력하면 정답으로 처리됩니다.'
+  : name(id) + '님의 ' + (index + 1) + '번째 타일 숫자를 입력하세요.\\n(0~11)';
+
+ const answer = prompt(promptText);
  if(answer === null) return;
 
- const actual = tileNumber(g.hands[id][index]);
+ const actual = tileNumber(targetTile);
+ const normalized = answer.trim().toLowerCase();
+ const correct = isJoker ? normalized === '조커' : Number(normalized) === actual;
+
  g.revealed = g.revealed || {};
  g.revealed[id] = g.revealed[id] || {};
 
- if(Number(answer.trim()) === actual){
-  g.revealed[id][index] = true;
-  
-  const allOpen = g.hands[id].every((_, i) => g.revealed[id][i]);
+ if(correct){
+  // 타일 자체를 키로 저장해, 이후 손패 정렬/타일 추가가 있어도 표시가 유지되도록 함.
+  g.revealed[id][davinciTileKey(targetTile)] = true;
+
+  // 모두 공개되었는지는 현재 손패 기준으로 확인
+  const allOpen = targetHand.every(tile => !!g.revealed[id][davinciTileKey(tile)]);
+
+  // 모든 플레이어가 정답을 알 수 있도록 마지막 정답 정보를 공개 상태에 기록
+  g.lastGuess = {
+   guesser: me.id,
+   target: id,
+   index: index,
+   tile: targetTile,
+   correctAt: Date.now()
+  };
+
   if(allOpen){
    r.status = 'ended';
    g.finished = true;
