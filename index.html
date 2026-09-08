@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.23</title>
+<title>파티 게임 라운지 v3.24</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.23: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.24: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.23: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.24: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.23: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.24: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.23
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.24
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -749,6 +749,7 @@ async function resetPassword(){
 }
 
 async function enter(){
+ rummiClockRoomId=null; rummiClockTurnSeq=null; rummiClockLocalStartAt=0;
  localStorage.partyUser = JSON.stringify(me);
  await heartbeat();
  show('lobby');
@@ -775,6 +776,7 @@ async function logout(){
  await put('partyPresence/' + encodeURIComponent(me.id), null);
  localStorage.removeItem('partyUser');
  me = null; roomId = null;
+ rummiClockRoomId=null; rummiClockTurnSeq=null; rummiClockLocalStartAt=0;
  if(tick) clearInterval(tick);
  tick = null;
  show('auth');
@@ -2184,6 +2186,12 @@ let rummiSelected = new Set();
 let rummiDraft = null;
 let rummiDraftTurn = null;
 let rummiTimer = null;
+// 턴 전환을 각 클라이언트가 감지한 시점을 기준으로 시계를 보정한다.
+// 이전 방식은 다른 플레이어가 턴을 넘긴 시점의 Date.now()를 그대로 사용해서,
+// 네트워크/폴링 지연만큼 다음 플레이어의 30초가 깎일 수 있었다.
+let rummiClockRoomId = null;
+let rummiClockTurnSeq = null;
+let rummiClockLocalStartAt = 0;
 let rummiDraggedId = null;
 let rummiDraggedIds = null;
 let rummiHandOrder = []; // 상대 턴에도 내가 정렬한 패 순서를 유지하기 위한 로컬 표시 순서
@@ -2265,7 +2273,23 @@ function createRummikub(ids,turnLimit){
  };
 }
 function rummiCurrentTurn(g){ return g.ids[g.turn%g.ids.length]; }
-function rummiTimeLeft(g){ const limit=Number(g.turnLimit||30); const now=g.paused&&g.pausedAt?g.pausedAt:Date.now(); return Math.max(0,limit-Math.floor((now-(g.turnStartedAt||now))/1000)); }
+function rummiSyncClock(g){
+ const seq=Number(g?.turnSeq||0);
+ if(rummiClockRoomId!==roomId || rummiClockTurnSeq!==seq || !rummiClockLocalStartAt){
+  rummiClockRoomId=roomId;
+  rummiClockTurnSeq=seq;
+  // 이 클라이언트가 새 턴을 실제로 전달받은 순간부터 카운트한다.
+  // 따라서 폴링/네트워크 지연으로 다음 사람의 30초가 미리 소모되지 않는다.
+  rummiClockLocalStartAt=Date.now();
+ }
+}
+function rummiTimeLeft(g){
+ const limit=Number(g.turnLimit||30);
+ const now=g.paused&&g.pausedAt?g.pausedAt:Date.now();
+ const sameClock=rummiClockRoomId===roomId && rummiClockTurnSeq===Number(g.turnSeq||0) && rummiClockLocalStartAt;
+ const start=sameClock?rummiClockLocalStartAt:(g.turnStartedAt||now);
+ return Math.max(0,limit-Math.floor((now-start)/1000));
+}
 function rummiAllTableIds(g){ return (g.groups||[]).flat(); }
 function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; rummiDraggedIds=null; rummiRackDragId=null; }
 
@@ -2494,6 +2518,8 @@ function drawRummikub(r){
  if(typeof g.turn !== 'number') g.turn=0;
  if(typeof g.turnSeq !== 'number') g.turnSeq=0;
  if(!g.turnStartedAt) g.turnStartedAt=Date.now();
+ // 새 턴을 이 클라이언트가 받은 순간을 기록해 네트워크 지연을 보정한다.
+ rummiSyncClock(g);
  const isMyTurn=rummiCurrentTurn(g)===me.id,isHost=r.host===me.id||isAdmin(),left=rummiTimeLeft(g),isPaused=!!g.paused;
 
  if(g.finished||r.status==='ended')return `<div class="rummi-board"><div class="rummi-title">🎲 루미큐브</div><div class="end-box"><h2>🏆 게임 종료!</h2><p>우승자: <b>${esc(name(g.winner))}</b></p><p>${esc(g.lastAction||'')}</p>${g.scores?`<div class="notice" style="text-align:left"><b>점수</b><br>${g.ids.map(id=>`${esc(name(id))}: ${g.scores[id]>0?'+':''}${g.scores[id]??0}점`).join('<br>')}</div>`:''}<div class="row"><button onclick="leaveRoom()">← 로비로 나가기</button>${isHost?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}</div></div></div>`;
@@ -2694,7 +2720,19 @@ function rummiHandleEscape(ev){
 if(!window.__rummiEscapeBound){window.__rummiEscapeBound=true;document.addEventListener('keydown',rummiHandleEscape);}
 
 function rummiLocalClock(){
- if(!roomId)return;const r=data.partyRooms[roomId];if(!r||r.type!=='rummikub'||r.status!=='playing'||!r.game)return;const g=r.game,left=rummiTimeLeft(g),el=$('rummiClock');if(el){el.textContent=left+'초';el.classList.toggle('urgent',left<=10);}if(!g.paused&&rummiCurrentTurn(g)===me.id&&left<=0&&!g.finished&&!rummiTimeoutLock){rummiTimeoutLock=true;rummiAutoTimeout();}
+ if(!roomId)return;
+ const r=data.partyRooms[roomId];
+ if(!r||r.type!=='rummikub'||r.status!=='playing'||!r.game)return;
+ const g=r.game;
+ const left=rummiTimeLeft(g);
+ const el=$('rummiClock');
+ if(el){el.textContent=left+'초';el.classList.toggle('urgent',left<=10);}
+ // 실제 현재 플레이어만 자신의 시간 초과 처리를 실행한다.
+ // 다만 시계 자체는 모든 클라이언트에서 계속 갱신한다.
+ if(!g.paused&&rummiCurrentTurn(g)===me.id&&left<=0&&!g.finished&&!rummiTimeoutLock){
+  rummiTimeoutLock=true;
+  rummiAutoTimeout();
+ }
 }
 let rummiTimeoutLock=false;
 async function rummiAutoTimeout(){
