@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.24</title>
+<title>파티 게임 라운지 v3.25</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.24: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.25: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.24: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.25: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.24: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.25: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.24
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.26
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1270,6 +1270,20 @@ function davinciTileClass(tile){
 function drawDavinci(r){
  const g = r.game;
  if(!g || !g.ids) return `<div class="notice">게임 데이터를 불러오는 중...</div>`;
+
+ // 게임이 끝났으면 승자와 종료 사유를 모든 플레이어에게 명확하게 표시합니다.
+ if(g.finished || r.status === 'ended'){
+  const winnerName = g.winner ? name(g.winner) : '승자 없음';
+  return `<div class="end-box">
+   <h2>🏆 다빈치 코드 게임 종료!</h2>
+   <p style="font-size:20px;margin:18px 0"><b>🎉 승리자: ${esc(winnerName)}</b></p>
+   <p>${esc(g.lastGuess ? `${name(g.lastGuess.guesser)}님이 ${name(g.lastGuess.target)}님의 모든 타일을 맞혔습니다.` : (g.lastAction || '게임이 종료되었습니다.'))}</p>
+   <div class="row" style="margin-top:18px">
+    <button onclick="leaveRoom()">← 로비로 나가기</button>
+    ${(r.host===me.id||isAdmin())?'<button class="mint" onclick="backToWaitingRoom()">🏠 대기실로 돌아가기</button>':''}
+   </div>
+  </div>`;
+ }
 
  g.revealed = g.revealed || {};
  const turn = g.ids[g.turn % g.ids.length];
@@ -2273,22 +2287,29 @@ function createRummikub(ids,turnLimit){
  };
 }
 function rummiCurrentTurn(g){ return g.ids[g.turn%g.ids.length]; }
+let rummiClockPausedAt=0;
+let rummiClockPausedTotal=0;
 function rummiSyncClock(g){
  const seq=Number(g?.turnSeq||0);
  if(rummiClockRoomId!==roomId || rummiClockTurnSeq!==seq || !rummiClockLocalStartAt){
-  rummiClockRoomId=roomId;
-  rummiClockTurnSeq=seq;
-  // 이 클라이언트가 새 턴을 실제로 전달받은 순간부터 카운트한다.
-  // 따라서 폴링/네트워크 지연으로 다음 사람의 30초가 미리 소모되지 않는다.
-  rummiClockLocalStartAt=Date.now();
+  rummiClockRoomId=roomId; rummiClockTurnSeq=seq; rummiClockLocalStartAt=Date.now();
+  rummiClockPausedAt=0; rummiClockPausedTotal=0;
+ }
+ if(g?.paused){
+  if(!rummiClockPausedAt) rummiClockPausedAt=Number(g.pausedAt||Date.now());
+ }else if(rummiClockPausedAt){
+  rummiClockPausedTotal += Math.max(0,Date.now()-rummiClockPausedAt);
+  rummiClockPausedAt=0;
  }
 }
 function rummiTimeLeft(g){
- const limit=Number(g.turnLimit||30);
- const now=g.paused&&g.pausedAt?g.pausedAt:Date.now();
+ rummiSyncClock(g);
+ const limit=Number(g.turnLimit||30), now=Date.now();
  const sameClock=rummiClockRoomId===roomId && rummiClockTurnSeq===Number(g.turnSeq||0) && rummiClockLocalStartAt;
  const start=sameClock?rummiClockLocalStartAt:(g.turnStartedAt||now);
- return Math.max(0,limit-Math.floor((now-start)/1000));
+ let pausedMs=rummiClockPausedTotal;
+ if(g.paused && rummiClockPausedAt) pausedMs += Math.max(0,now-rummiClockPausedAt);
+ return Math.max(0,limit-Math.floor(Math.max(0,now-start-pausedMs)/1000));
 }
 function rummiAllTableIds(g){ return (g.groups||[]).flat(); }
 function rummiResetLocal(){ rummiSelected.clear(); rummiDraft=null; rummiDraftTurn=null; rummiDraggedId=null; rummiDraggedIds=null; rummiRackDragId=null; }
@@ -2402,12 +2423,43 @@ function rummiDragged(ev){
    || (ev&&ev.dataTransfer?ev.dataTransfer.getData('text/plain').split(',').filter(Boolean):[]);
  return Array.isArray(raw)?raw:[raw];
 }
+function rummiTrySplitRun(group,g){
+ // 같은 색 연속 숫자 조합에 패를 끼워 넣어 기존 조합이 깨졌을 때,
+ // 3장 이상인 연속 런 여러 개로 정확하게 나눌 수 있으면 자동 분리합니다.
+ const ts=(group||[]).map(id=>g.tiles[id]).filter(Boolean);
+ if(ts.length<6 || ts.some(t=>t.j)) return null;
+ const color=ts[0].c;
+ if(!ts.every(t=>t.c===color)) return null;
+ const sorted=[...ts].sort((a,b)=>a.n-b.n);
+ if(new Set(sorted.map(t=>t.n)).size===sorted.length) return null;
+
+ function search(pos,parts){
+  if(pos===sorted.length) return parts.length>=2 ? parts : null;
+  for(let end=pos+3;end<=sorted.length;end++){
+   const seg=sorted.slice(pos,end).map(t=>t.id);
+   if(rummiValidGroup(seg,g)){
+    const found=search(end,parts.concat([seg]));
+    if(found)return found;
+   }
+  }
+  return null;
+ }
+ return search(0,[]);
+}
+
 function rummiMoveIdsToGroup(ids,index,g){
  ids=[...new Set(ids)].filter(id=>g.tiles[id]);
  ids.forEach(id=>rummiRemoveFromDraft(id));
  if(!rummiDraft.groups[index])rummiDraft.groups[index]=[];
- rummiDraft.groups[index].push(...ids);
- rummiDraft.groups[index]=rummiSortGroup(rummiDraft.groups[index],g);
+ const combined=[...rummiDraft.groups[index],...ids];
+ const sorted=rummiSortGroup(combined,g);
+ const split=rummiTrySplitRun(combined,g);
+ if(split){
+  // 예: 1-2-3-4-5에 같은 색 3을 추가하면 1-2-3 / 3-4-5로 자동 분리
+  rummiDraft.groups.splice(index,1,...split);
+ }else{
+  rummiDraft.groups[index]=sorted;
+ }
 }
 function rummiPublishDraft(g){
  if(!g || !rummiDraft || rummiCurrentTurn(g)!==me.id) return null;
@@ -2726,7 +2778,7 @@ function rummiLocalClock(){
  const g=r.game;
  const left=rummiTimeLeft(g);
  const el=$('rummiClock');
- if(el){el.textContent=left+'초';el.classList.toggle('urgent',left<=10);}
+ if(el){el.textContent=left+'초';el.classList.toggle('urgent',!g.paused&&left<=10);}
  // 실제 현재 플레이어만 자신의 시간 초과 처리를 실행한다.
  // 다만 시계 자체는 모든 클라이언트에서 계속 갱신한다.
  if(!g.paused&&rummiCurrentTurn(g)===me.id&&left<=0&&!g.finished&&!rummiTimeoutLock){
