@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.28
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.30
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -2455,6 +2455,13 @@ function rummiTrySplitRun(group,g){
  const color=ts[0].c;
  if(!ts.every(t=>t.c===color)) return null;
 
+ // 중복 숫자가 실제로 있을 때만 분리합니다.
+ // 1-2-3-4-5 + 6-7처럼 그냥 길게 이어지는 조합은
+ // 굳이 둘로 나누지 않습니다.
+ const numsAll=ts.map(t=>t.n);
+ const hasDuplicateNumber=numsAll.some((n,i)=>numsAll.indexOf(n)!==i);
+ if(!hasDuplicateNumber) return null;
+
  // 각 물리 타일을 정확히 한 번씩 사용하면서, 3장 이상 연속 런들로
  // 전체를 분할할 수 있는지 백트래킹합니다. 중복 숫자는 서로 다른 타일이므로
  // 12345 + 3처럼 3을 두 조합에서 하나씩 사용할 수 있습니다.
@@ -2471,6 +2478,7 @@ function rummiTrySplitRun(group,g){
   const first=remaining[0];
   const firstTile=g.tiles[first];
   const candidates=remaining.filter(id=>g.tiles[id].c===color);
+  let bestFound=null, bestScore=-1;
   // first 타일을 반드시 포함하는 부분집합만 검사해 중복 탐색을 크게 줄입니다.
   for(let mask=0;mask<(1<<(candidates.length-1));mask++){
    const subset=[first];
@@ -2484,9 +2492,17 @@ function rummiTrySplitRun(group,g){
    const set=new Set(subset);
    const rest=remaining.filter(id=>!set.has(id));
    const found=findPartitions(rest,parts.concat([subset]));
-   if(found) return found;
+   if(found){
+    // 가능한 분할 중 조합을 가장 길게 붙이는 쪽을 우선합니다.
+    // (그룹 수가 적고, 같은 수가 겹치는 지점에서만 자연스럽게 나뉘도록)
+    const score=found.reduce((sum,part)=>sum+part.length*part.length,0);
+    const prev=found.__rummiScore||-1;
+    found.__rummiScore=score;
+    if(!bestFound || score>bestScore){ bestFound=found; bestScore=score; }
+   }
   }
   memo.set(memoKey,true);
+  if(bestFound){ delete bestFound.__rummiScore; return bestFound; }
   return null;
  }
  return findPartitions(ids,[]);
@@ -2499,8 +2515,9 @@ function rummiMoveIdsToGroup(ids,index,g){
  const sorted=rummiSortGroup(combined,g);
  const split=rummiTrySplitRun(combined,g);
  if(split){
-  // 예: 1-2-3-4-5에 같은 색 3을 추가하면 1-2-3 / 3-4-5로 자동 분리
-  rummiDraft.groups.splice(index,1,...split);
+  // 중복 숫자로 인해 분리가 필요한 경우에만, 서로 이어지는 패끼리 최대한 길게 자동 분리
+  const orderedSplit=split.map(gr=>rummiSortGroup([...gr],g));
+  rummiDraft.groups.splice(index,1,...orderedSplit);
  }else{
   rummiDraft.groups[index]=sorted;
  }
