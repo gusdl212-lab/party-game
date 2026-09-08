@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.25</title>
+<title>파티 게임 라운지 v3.31</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.25: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.31: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.25: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.31: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -430,7 +430,7 @@ input,select,textarea{
 .rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
 
-/* v3.20: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
+/* v3.31: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
 .rummi-shell{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:stretch}
 .rummi-player-rail{
   background:rgba(2,12,30,.46);border:1px solid rgba(255,255,255,.12);border-radius:14px;
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.25: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.31: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.30
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.31
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1590,7 +1590,7 @@ function drawMafia(r){
  const mafiasStr = g.mafias.map(id => name(id)).join(', ');
 
  let html = `
-  <h2>🌙 마피아 게임 (라운지 v3.20)</h2>
+  <h2>🌙 마피아 게임 (라운지 v3.31)</h2>
   <div class="turn-banner my-turn">
    내 직업: <b>${roleNameStr}</b> ${myRole === 'mafia' ? `(동료 마피아: ${mafiasStr})` : ''}
    ${isDead ? ' <span style="color:#de5570">[사망함]</span>' : ''}
@@ -2446,80 +2446,81 @@ function rummiDragged(ev){
  return Array.isArray(raw)?raw:[raw];
 }
 function rummiTrySplitRun(group,g){
- // 기존 런에 패를 추가한 결과가 하나의 유효한 조합이 아니더라도,
- // 전체 타일을 3장 이상인 유효한 런 여러 개로 나눌 수 있으면 자동 분리합니다.
- // 예: 같은 색 1-2-3-4-5 + 3 -> 1-2-3 / 3-4-5
+ // 같은 색의 런에 같은 숫자가 중복으로 들어온 경우에만 자동 분리합니다.
+ // 예: 1-2-3-4-5 + 3  → 1-2-3 / 3-4-5
+ //      1-2-3-4-5-6 + 3-4 → 1-2-3-4 / 3-4-5-6
+ // 단순히 1-2-3-4-5 + 6-7처럼 숫자가 모두 이어지는 경우에는 분리하지 않습니다.
  const ids=[...new Set(group||[])].filter(id=>g.tiles[id]);
  const ts=ids.map(id=>g.tiles[id]).filter(Boolean);
  if(ts.length<6 || ts.some(t=>t.j)) return null;
  const color=ts[0].c;
  if(!ts.every(t=>t.c===color)) return null;
-
- // 중복 숫자가 실제로 있을 때만 분리합니다.
- // 1-2-3-4-5 + 6-7처럼 그냥 길게 이어지는 조합은
- // 굳이 둘로 나누지 않습니다.
  const numsAll=ts.map(t=>t.n);
- const hasDuplicateNumber=numsAll.some((n,i)=>numsAll.indexOf(n)!==i);
- if(!hasDuplicateNumber) return null;
+ if(!numsAll.some((n,i)=>numsAll.indexOf(n)!==i)) return null;
 
- // 각 물리 타일을 정확히 한 번씩 사용하면서, 3장 이상 연속 런들로
- // 전체를 분할할 수 있는지 백트래킹합니다. 중복 숫자는 서로 다른 타일이므로
- // 12345 + 3처럼 3을 두 조합에서 하나씩 사용할 수 있습니다.
- const n=ts.length;
- const memo=new Map();
- const keyFor=remaining => remaining.slice().sort((a,b)=>a-b).join(',');
-
- function findPartitions(remaining, parts){
+ // 물리적으로 서로 다른 타일을 정확히 한 번씩 사용하여 3장 이상 연속 런으로
+ // 전체를 나눌 수 있는지 찾습니다. 가능한 분할 중 '가장 긴 조합'을 우선합니다.
+ function partition(remaining, parts){
   if(!remaining.length) return parts.length>=2 ? parts : null;
-  if(parts.length>=4) return null;
-  const memoKey=keyFor(remaining)+'|'+parts.length;
-  if(memo.has(memoKey)) return null;
 
+  // 첫 타일은 반드시 이번 조합에 넣습니다. 이후 타일의 포함 여부만 탐색합니다.
   const first=remaining[0];
-  const firstTile=g.tiles[first];
-  const candidates=remaining.filter(id=>g.tiles[id].c===color);
-  let bestFound=null, bestScore=-1;
-  // first 타일을 반드시 포함하는 부분집합만 검사해 중복 탐색을 크게 줄입니다.
-  for(let mask=0;mask<(1<<(candidates.length-1));mask++){
+  const candidates=remaining.slice(1);
+  let best=null, bestScore=-1;
+
+  for(let mask=0;mask<(1<<candidates.length);mask++){
    const subset=[first];
-   for(let i=1;i<candidates.length;i++) if(mask&(1<<(i-1))) subset.push(candidates[i]);
+   for(let i=0;i<candidates.length;i++) if(mask&(1<<i)) subset.push(candidates[i]);
    if(subset.length<3) continue;
+
    const nums=subset.map(id=>g.tiles[id].n).sort((a,b)=>a-b);
    if(new Set(nums).size!==nums.length) continue;
-   const min=nums[0], max=nums[nums.length-1];
-   if(max-min+1!==nums.length) continue;
+   if(nums[nums.length-1]-nums[0]+1!==nums.length) continue;
    if(!rummiValidGroup(subset,g)) continue;
-   const set=new Set(subset);
-   const rest=remaining.filter(id=>!set.has(id));
-   const found=findPartitions(rest,parts.concat([subset]));
-   if(found){
-    // 가능한 분할 중 조합을 가장 길게 붙이는 쪽을 우선합니다.
-    // (그룹 수가 적고, 같은 수가 겹치는 지점에서만 자연스럽게 나뉘도록)
-    const score=found.reduce((sum,part)=>sum+part.length*part.length,0);
-    const prev=found.__rummiScore||-1;
-    found.__rummiScore=score;
-    if(!bestFound || score>bestScore){ bestFound=found; bestScore=score; }
-   }
+
+   const used=new Set(subset);
+   const rest=remaining.filter(id=>!used.has(id));
+   // 남은 패가 1~2장이라면 애초에 완전 분할이 불가능합니다.
+   if(rest.length>0 && rest.length<3) continue;
+
+   const found=partition(rest,parts.concat([subset]));
+   if(!found) continue;
+   const score=found.reduce((sum,part)=>sum+part.length*part.length,0);
+   if(score>bestScore){ best=found; bestScore=score; }
   }
-  memo.set(memoKey,true);
-  if(bestFound){ delete bestFound.__rummiScore; return bestFound; }
-  return null;
+  return best;
  }
- return findPartitions(ids,[]);
+
+ return partition(ids,[]);
 }
+
+function rummiApplyAutoSplit(groups,g){
+ const out=[];
+ for(const gr of (groups||[])){
+  const clean=[...new Set(gr)].filter(id=>g.tiles[id]);
+  const split=rummiTrySplitRun(clean,g);
+  if(split){
+   // 분리된 각 조합도 즉시 숫자순으로 정렬해 화면에 바로 반영합니다.
+   split.forEach(part=>out.push(rummiSortGroup([...part],g)));
+  }else{
+   out.push(rummiSortGroup(clean,g));
+  }
+ }
+ return out.filter(gr=>gr.length);
+}
+
 function rummiMoveIdsToGroup(ids,index,g){
  ids=[...new Set(ids)].filter(id=>g.tiles[id]);
  ids.forEach(id=>rummiRemoveFromDraft(id));
  if(!rummiDraft.groups[index])rummiDraft.groups[index]=[];
  const combined=[...rummiDraft.groups[index],...ids];
- const sorted=rummiSortGroup(combined,g);
  const split=rummiTrySplitRun(combined,g);
  if(split){
-  // 중복 숫자로 인해 분리가 필요한 경우에만, 서로 이어지는 패끼리 최대한 길게 자동 분리
+  // 중복 숫자가 생겨 분리가 필요한 경우에만 자동 분리합니다.
   const orderedSplit=split.map(gr=>rummiSortGroup([...gr],g));
   rummiDraft.groups.splice(index,1,...orderedSplit);
  }else{
-  rummiDraft.groups[index]=sorted;
+  rummiDraft.groups[index]=rummiSortGroup(combined,g);
  }
 }
 function rummiPublishDraft(g){
@@ -2559,7 +2560,13 @@ async function rummiMoveToNewGroup(ev){
  if(!g||g.paused||!rummiDraft||!ids.length)return;
  ids=[...new Set(ids)].filter(id=>g.tiles[id]);
  ids.forEach(id=>rummiRemoveFromDraft(id));
- rummiDraft.groups.push(rummiSortGroup(ids,g));
+ const split=rummiTrySplitRun(ids,g);
+ if(split){
+  // 빈 테이블에 여러 장을 한꺼번에 끌어놓은 경우에도 동일하게 자동 분리합니다.
+  split.forEach(gr=>rummiDraft.groups.push(rummiSortGroup([...gr],g)));
+ }else{
+  rummiDraft.groups.push(rummiSortGroup(ids,g));
+ }
  rummiSelected.clear();
  render();
  await rummiSyncDraft();
@@ -2803,7 +2810,7 @@ async function togglePauseRummikub(){
  const r=data.partyRooms[roomId],g=r?.game;
  if(!g||r.type!=='rummikub'||r.status!=='playing'||g.finished)return;
  // 현재 상태를 먼저 확인한 뒤, 일시정지/해제를 각각 처리한다.
- // 기존 v3.16은 g.paused를 먼저 boolean으로 덮어써서 항상 해제 분기로 들어가는 문제가 있었다.
+ // 기존 v3.31은 g.paused를 먼저 boolean으로 덮어써서 항상 해제 분기로 들어가는 문제가 있었다.
  if(g.paused){
   if(g.pausedBy!==me.id)return alert('일시정지를 한 사람만 해제할 수 있습니다.');
   const pausedMs=Math.max(0,Date.now()-(g.pausedAt||Date.now()));
