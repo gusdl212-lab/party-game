@@ -656,6 +656,17 @@ async function put(path, value){
  }catch(e){ console.error(e); return false; }
 }
 
+async function patch(path, value){
+ try{
+  const r = await fetch(BASE + '/' + path + '.json', {
+   method: 'PATCH',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify(value)
+  });
+  return r.ok;
+ }catch(e){ console.error(e); return false; }
+}
+
 function show(id){
  ['auth','lobby','roomView'].forEach(x => {
   $(x).classList.toggle('hidden', x !== id);
@@ -2249,7 +2260,7 @@ function createRummikub(ids,turnLimit){
  }
  return {
   version:4, ids, tiles:d.tiles, deck:d.deck, hands, groups:[], opened:{}, turn:firstIndex,
-  turnLimit:turnLimit===60?60:30, turnStartedAt:Date.now(), paused:false, pausedBy:null, pausedAt:null, finished:false,winner:null, scores:{}, consecutivePasses:0,
+  turnLimit:turnLimit===60?60:30, turnStartedAt:Date.now(), turnSeq:0, paused:false, pausedBy:null, pausedAt:null, finished:false,winner:null, scores:{}, consecutivePasses:0,
   lastAction:'게임이 시작되었습니다. 106장의 패를 완전히 섞어 각자 14장씩 나누었습니다. 첫 차례는 무작위로 정했습니다.',lastDraw:null
  };
 }
@@ -2375,15 +2386,24 @@ function rummiMoveIdsToGroup(ids,index,g){
  rummiDraft.groups[index]=rummiSortGroup(rummiDraft.groups[index],g);
 }
 function rummiPublishDraft(g){
- if(!g || !rummiDraft || rummiCurrentTurn(g)!==me.id) return;
- g.liveGroups=(rummiDraft.groups||[]).map(gr=>rummiSortGroup([...gr],g)).filter(gr=>gr.length);
+ if(!g || !rummiDraft || rummiCurrentTurn(g)!==me.id) return null;
+ const liveGroups=(rummiDraft.groups||[]).map(gr=>rummiSortGroup([...gr],g)).filter(gr=>gr.length);
+ const turnSeq=Number(g.turnSeq||0);
+ g.liveGroups=liveGroups;
  g.liveTurn=g.turn;
+ g.liveTurnSeq=turnSeq;
+ return {liveGroups,liveTurn:g.turn,liveTurnSeq:turnSeq};
 }
 async function rummiSyncDraft(){
  const r=data.partyRooms[roomId],g=r?.game;
  if(!g||!rummiDraft||rummiCurrentTurn(g)!==me.id)return;
- rummiPublishDraft(g);
- await put(ROOM+'/'+roomId,r);
+ const payload=rummiPublishDraft(g);
+ if(!payload)return;
+ // 중요: 임시 배치는 방 전체 PUT으로 저장하지 않는다.
+ // 예전 방식은 이 요청이 늦게 도착하면 이전 턴의 오래된 room 스냅샷으로
+ // 다른 플레이어가 확정한 groups/turn까지 덮어쓸 수 있었다.
+ // liveGroups만 PATCH하고 turnSeq를 함께 기록해 오래된 임시 배치가 다시 나타나지 않게 한다.
+ await patch(ROOM+'/'+roomId+'/game',payload);
  await get();
  render();
 }
@@ -2472,6 +2492,7 @@ function drawRummikub(r){
  g.deck = Array.isArray(g.deck)?g.deck:[];
  g.paused=!!g.paused; g.pausedBy=g.pausedBy||null; g.pausedAt=g.pausedAt||null;
  if(typeof g.turn !== 'number') g.turn=0;
+ if(typeof g.turnSeq !== 'number') g.turnSeq=0;
  if(!g.turnStartedAt) g.turnStartedAt=Date.now();
  const isMyTurn=rummiCurrentTurn(g)===me.id,isHost=r.host===me.id||isAdmin(),left=rummiTimeLeft(g),isPaused=!!g.paused;
 
@@ -2481,7 +2502,7 @@ function drawRummikub(r){
  if(isMyTurn&&!rummiTimer)rummiTimer=setInterval(rummiLocalClock,1000);
 
  const currentPlayer=rummiCurrentTurn(g);
- const liveTable=(g.liveTurn===g.turn && Array.isArray(g.liveGroups)) ? g.liveGroups : (g.groups||[]);
+ const liveTable=(Number(g.liveTurnSeq)===Number(g.turnSeq) && g.liveTurn===g.turn && Array.isArray(g.liveGroups)) ? g.liveGroups : (g.groups||[]);
  const groups=isMyTurn&&rummiDraft ? rummiDraft.groups : liveTable;
  const hand=rummiDraft&&isMyTurn ? rummiDraft.hand : rummiApplyHandOrder(g,g.hands[me.id]||[]);
  const draft=isMyTurn&&!isPaused&&!!rummiDraft;
@@ -2598,6 +2619,7 @@ async function rummiCommitTurn(silent=false){
   rummiFinishByEmptyRack(r,me.id);
  } else {
   g.turn=(g.turn+1)%g.ids.length;
+  g.turnSeq=Number(g.turnSeq||0)+1;
   g.turnStartedAt=Date.now();
   g.lastAction=`${name(me.id)}님이 턴을 확정했습니다.`;
  }
@@ -2622,7 +2644,7 @@ async function rummiDraw(){
    rummiFinishByNoMoves(r);
   } else {
    g.lastAction=`${name(me.id)}님은 먹을 패가 없어 차례를 넘겼습니다.`;
-   g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();
+   g.turn=(g.turn+1)%g.ids.length;g.turnSeq=Number(g.turnSeq||0)+1;g.turnStartedAt=Date.now();
   }
   rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();return;
  }
@@ -2633,7 +2655,7 @@ async function rummiDraw(){
  delete g.liveGroups; delete g.liveTurn;
  g.lastDraw={player:me.id,tile:tid};
  g.lastAction=`${name(me.id)}님이 패 1장을 먹었습니다.`;
- g.turn=(g.turn+1)%g.ids.length;g.turnStartedAt=Date.now();
+ g.turn=(g.turn+1)%g.ids.length;g.turnSeq=Number(g.turnSeq||0)+1;g.turnStartedAt=Date.now();
  rummiResetLocal();await put(ROOM+'/'+roomId,r);await get();render();
 }
 
@@ -2691,11 +2713,11 @@ async function rummiAutoTimeout(){
   fresh.consecutivePasses=0;
   delete fresh.liveGroups; delete fresh.liveTurn;
   fresh.lastAction=`${name(me.id)}님이 시간 초과되어 완성되지 않은 배치를 취소하고 패 1장을 먹었습니다.`;
-  fresh.turn=(fresh.turn+1)%fresh.ids.length;fresh.turnStartedAt=Date.now();
+  fresh.turn=(fresh.turn+1)%fresh.ids.length;fresh.turnSeq=Number(fresh.turnSeq||0)+1;fresh.turnStartedAt=Date.now();
  } else {
   fresh.consecutivePasses=Number(fresh.consecutivePasses||0)+1;
   if(fresh.consecutivePasses>=fresh.ids.length){ rummiFinishByNoMoves(r); }
-  else { fresh.lastAction=`${name(me.id)}님이 시간 초과되었고 먹을 패가 없어 차례를 넘겼습니다.`; fresh.turn=(fresh.turn+1)%fresh.ids.length;fresh.turnStartedAt=Date.now(); }
+  else { fresh.lastAction=`${name(me.id)}님이 시간 초과되었고 먹을 패가 없어 차례를 넘겼습니다.`; fresh.turn=(fresh.turn+1)%fresh.ids.length;fresh.turnSeq=Number(fresh.turnSeq||0)+1;fresh.turnStartedAt=Date.now(); }
  }
  rummiResetLocal();rummiTimeoutLock=false;await put(ROOM+'/'+roomId,data.partyRooms[roomId]);await get();render();
 }
