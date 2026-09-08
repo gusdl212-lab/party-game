@@ -508,7 +508,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.26
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.28
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -1141,11 +1141,33 @@ function drawWaitingRoom(r){
 
 function drawEnded(r){
  const canControl = r.host === me.id || isAdmin();
+ const g = r.game || {};
+ const winner = g.winner ? name(g.winner) : null;
+ let resultHtml = '';
+ if(r.type === 'davinci'){
+  resultHtml = `
+   <div class="notice" style="margin-top:15px;background:#142c2a;border:2px solid #62e6b2;text-align:center">
+    <div style="font-size:28px">🏆</div>
+    <div style="font-size:22px;font-weight:900;color:#62e6b2">승리자: ${esc(winner || '승자 없음')}</div>
+    <div style="margin-top:8px">${esc(g.lastAction || (winner ? winner+'님이 승리했습니다.' : '게임이 종료되었습니다.'))}</div>
+   </div>`;
+ }else if(r.type === 'rummikub'){
+  const scoreRows = g.scores ? g.ids.map(id => `<div>${esc(name(id))}: <b>${g.scores[id]>0?'+':''}${g.scores[id]??0}점</b></div>`).join('') : '';
+  resultHtml = `
+   <div class="notice" style="margin-top:15px;background:#142c2a;border:2px solid #62e6b2;text-align:center">
+    <div style="font-size:28px">🏆</div>
+    <div style="font-size:22px;font-weight:900;color:#62e6b2">승리자: ${esc(winner || '승자 없음')}</div>
+    <div style="margin-top:8px">${esc(g.lastAction || (winner ? winner+'님이 승리했습니다.' : '게임이 종료되었습니다.'))}</div>
+    ${scoreRows ? `<div style="margin-top:12px;text-align:left;border-top:1px solid rgba(255,255,255,.15);padding-top:10px"><b>최종 점수</b>${scoreRows}</div>` : ''}
+   </div>`;
+ }else{
+  resultHtml = `<div class="notice" style="margin-top:15px">${winner ? `🏆 승리: <b>${esc(winner)}</b>` : '게임이 종료되었습니다.'}</div>`;
+ }
  return `
   <div class="end-box">
    <h2>🎉 게임 종료</h2>
    <p>${icon(r.type)} ${label(r.type)}</p>
-   <div class="notice">게임이 종료되었습니다. 방으로 돌아가서 설정을 바꾸거나 다시 시작할 수 있습니다.</div>
+   ${resultHtml}
    <div class="row" style="margin-top:15px">
     <button onclick="leaveRoom()">← 로비로 나가기</button>
     ${canControl ? `<button class="mint" onclick="backToWaitingRoom()">🏠 대기실(방)로 돌아가기</button>` : `<div class="notice" style="margin:0">방장이 대기실로 돌려보낼 수 있습니다.</div>`}
@@ -2424,29 +2446,51 @@ function rummiDragged(ev){
  return Array.isArray(raw)?raw:[raw];
 }
 function rummiTrySplitRun(group,g){
- // 같은 색 연속 숫자 조합에 패를 끼워 넣어 기존 조합이 깨졌을 때,
- // 3장 이상인 연속 런 여러 개로 정확하게 나눌 수 있으면 자동 분리합니다.
- const ts=(group||[]).map(id=>g.tiles[id]).filter(Boolean);
+ // 기존 런에 패를 추가한 결과가 하나의 유효한 조합이 아니더라도,
+ // 전체 타일을 3장 이상인 유효한 런 여러 개로 나눌 수 있으면 자동 분리합니다.
+ // 예: 같은 색 1-2-3-4-5 + 3 -> 1-2-3 / 3-4-5
+ const ids=[...new Set(group||[])].filter(id=>g.tiles[id]);
+ const ts=ids.map(id=>g.tiles[id]).filter(Boolean);
  if(ts.length<6 || ts.some(t=>t.j)) return null;
  const color=ts[0].c;
  if(!ts.every(t=>t.c===color)) return null;
- const sorted=[...ts].sort((a,b)=>a.n-b.n);
- if(new Set(sorted.map(t=>t.n)).size===sorted.length) return null;
 
- function search(pos,parts){
-  if(pos===sorted.length) return parts.length>=2 ? parts : null;
-  for(let end=pos+3;end<=sorted.length;end++){
-   const seg=sorted.slice(pos,end).map(t=>t.id);
-   if(rummiValidGroup(seg,g)){
-    const found=search(end,parts.concat([seg]));
-    if(found)return found;
-   }
+ // 각 물리 타일을 정확히 한 번씩 사용하면서, 3장 이상 연속 런들로
+ // 전체를 분할할 수 있는지 백트래킹합니다. 중복 숫자는 서로 다른 타일이므로
+ // 12345 + 3처럼 3을 두 조합에서 하나씩 사용할 수 있습니다.
+ const n=ts.length;
+ const memo=new Map();
+ const keyFor=remaining => remaining.slice().sort((a,b)=>a-b).join(',');
+
+ function findPartitions(remaining, parts){
+  if(!remaining.length) return parts.length>=2 ? parts : null;
+  if(parts.length>=4) return null;
+  const memoKey=keyFor(remaining)+'|'+parts.length;
+  if(memo.has(memoKey)) return null;
+
+  const first=remaining[0];
+  const firstTile=g.tiles[first];
+  const candidates=remaining.filter(id=>g.tiles[id].c===color);
+  // first 타일을 반드시 포함하는 부분집합만 검사해 중복 탐색을 크게 줄입니다.
+  for(let mask=0;mask<(1<<(candidates.length-1));mask++){
+   const subset=[first];
+   for(let i=1;i<candidates.length;i++) if(mask&(1<<(i-1))) subset.push(candidates[i]);
+   if(subset.length<3) continue;
+   const nums=subset.map(id=>g.tiles[id].n).sort((a,b)=>a-b);
+   if(new Set(nums).size!==nums.length) continue;
+   const min=nums[0], max=nums[nums.length-1];
+   if(max-min+1!==nums.length) continue;
+   if(!rummiValidGroup(subset,g)) continue;
+   const set=new Set(subset);
+   const rest=remaining.filter(id=>!set.has(id));
+   const found=findPartitions(rest,parts.concat([subset]));
+   if(found) return found;
   }
+  memo.set(memoKey,true);
   return null;
  }
- return search(0,[]);
+ return findPartitions(ids,[]);
 }
-
 function rummiMoveIdsToGroup(ids,index,g){
  ids=[...new Set(ids)].filter(id=>g.tiles[id]);
  ids.forEach(id=>rummiRemoveFromDraft(id));
