@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.31</title>
+<title>파티 게임 라운지 v3.32</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.31: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.32: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.31: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.32: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -430,7 +430,7 @@ input,select,textarea{
 .rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
 
-/* v3.31: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
+/* v3.32: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
 .rummi-shell{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:stretch}
 .rummi-player-rail{
   background:rgba(2,12,30,.46);border:1px solid rgba(255,255,255,.12);border-radius:14px;
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.31: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.32: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -497,6 +497,19 @@ input,select,textarea{
  .rummi-tile.small{min-width:34px;width:34px;height:46px;font-size:16px}
 }
 
+
+/* 일반 사용자용 게임 목록 */
+.game-menu{display:flex;flex-direction:column;gap:6px}
+.game-menu-item{display:flex;align-items:center;gap:8px;padding:10px 9px;border-radius:7px;background:#20263a;border:1px solid #39476b;color:#edf2f7;text-decoration:none;font-size:12px;font-weight:700;transition:.2s;cursor:pointer}
+.game-menu-item:hover{background:#28334d;border-color:#7184e8;transform:translateX(2px)}
+.game-menu-item.current{background:#243c3b;border-color:#62e6b2;color:#62e6b2}
+.game-menu-item.sub{margin-left:14px;padding:8px 9px;font-size:11px}
+.game-menu-item .game-icon{width:24px;text-align:center;font-size:16px;flex-shrink:0}
+.game-menu-item .game-name{flex:1}
+.game-menu-item .current-badge{font-size:9px;color:#62e6b2;border:1px solid #62e6b2;padding:2px 4px;border-radius:4px}
+.game-menu-divider{height:1px;background:#303a58;margin:4px 0}
+.game-section-label{color:#aeb9d7;font-size:10px;font-weight:bold;padding:2px 4px}
+
 </style>
 </head>
 
@@ -508,7 +521,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.31
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.32
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -556,7 +569,7 @@ input,select,textarea{
  <div class="grid">
   <aside class="card">
    <div class="top">
-    <h3>👥 회원 목록</h3>
+    <h3 id="leftPanelTitle">👥 회원 목록</h3>
     <span id="memberCount" class="small"></span>
    </div>
    <div id="members" class="list"></div>
@@ -824,19 +837,56 @@ function render(){
  }
 }
 
+function renderGameMenu(){
+ $('leftPanelTitle').textContent = '🎮 게임 목록';
+ $('memberCount').textContent = '';
+ $('members').innerHTML = `
+  <div class="game-menu">
+   <a class="game-menu-item" href="https://gusdl212-lab.github.io/my-web/">
+    <span class="game-icon">⚫⚪</span>
+    <span class="game-name">오목</span>
+   </a>
+   <a class="game-menu-item" href="https://gusdl212-lab.github.io/othello-game/">
+    <span class="game-icon">⚫⚪</span>
+    <span class="game-name">오셀로</span>
+   </a>
+   <a class="game-menu-item" href="https://gusdl212-lab.github.io/chess/">
+    <span class="game-icon">♟️</span>
+    <span class="game-name">체스</span>
+   </a>
+   <a class="game-menu-item" href="https://gusdl212-lab.github.io/janggi/">
+    <span class="game-icon">🀄</span>
+    <span class="game-name">장기</span>
+   </a>
+   <div class="game-menu-divider"></div>
+   <div class="game-section-label">🎮 보드게임</div>
+   <a class="game-menu-item sub current" href="https://gusdl212-lab.github.io/party-game/">
+    <span class="game-icon">🎮</span>
+    <span class="game-name">보드게임 라운지</span>
+    <span class="current-badge">현재</span>
+   </a>
+  </div>
+ `;
+}
+
 function renderLobby(){
  const users = Object.values(data.users || {}).sort((a,b) => (b.lastActive||0) - (a.lastActive||0));
  const online = active();
- $('memberCount').textContent = users.length + '명';
 
- $('members').innerHTML = users.map(u => {
-  const isOnline = online.some(x => x.id === u.id);
-  return `
-   <div class="item">
-    <span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span>
-    ${isAdmin() && u.id !== ADMIN_ID ? `<button class="danger" style="padding:4px 8px;font-size:11px" onclick="adminDeleteUser('${u.id}')">탈퇴</button>` : ''}
-   </div>`;
- }).join('') || '<p class="small">회원이 없습니다.</p>';
+ if(isAdmin()){
+  $('leftPanelTitle').textContent = '👥 회원 목록';
+  $('memberCount').textContent = users.length + '명';
+  $('members').innerHTML = users.map(u => {
+   const isOnline = online.some(x => x.id === u.id);
+   return `
+    <div class="item">
+     <span>${isOnline ? '<span class="dot"></span>' : '⚪ '} ${u.id===ADMIN_ID?'👑 ':''}${esc(name(u.id))}</span>
+     ${isAdmin() && u.id !== ADMIN_ID ? `<button class="danger" style="padding:4px 8px;font-size:11px" onclick="adminDeleteUser('${u.id}')">탈퇴</button>` : ''}
+    </div>`;
+  }).join('') || '<p class="small">회원이 없습니다.</p>';
+ }else{
+  renderGameMenu();
+ }
 
  $('onlineCount').textContent = online.length + '명';
  $('online').innerHTML = online.map(u => `
