@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>파티 게임 라운지 v3.32</title>
+<title>파티 게임 라운지 v3.33</title>
 
 <style>
 *{
@@ -28,7 +28,7 @@ body{
 /* 루미큐브 방에서는 게임판을 가로로 충분히 사용할 수 있도록 전체 레이아웃 확장 */
 .app.rummi-app-wide{width:100vw;max-width:none;margin:0;padding-left:14px;padding-right:14px;}
 .app.rummi-app-wide #roomView > .card{width:100%;max-width:none;padding:14px 16px}
-/* v3.32: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
+/* v3.33: 채팅은 300px 고정, 남은 가로 공간은 루미큐브 게임판이 전부 사용 */
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout{display:grid !important;grid-template-columns:minmax(0,1fr) 300px !important;gap:14px;width:100%;}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > aside:first-child{display:none}
 .app.rummi-app-wide #roomView .grid.rummi-wide-layout > main{min-width:0;width:100%;max-width:none}
@@ -303,7 +303,7 @@ input,select,textarea{
 }
 
 
-/* v3.32: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.33: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -430,7 +430,7 @@ input,select,textarea{
 .rummi-hand .rummi-tile.selected{box-shadow:0 0 0 2px rgba(98,230,178,.35),0 4px 8px rgba(0,0,0,.35)}
 
 
-/* v3.32: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
+/* v3.33: 루미큐브 가로형 테이블 + 좌측 플레이어 캐릭터 */
 .rummi-shell{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:stretch}
 .rummi-player-rail{
   background:rgba(2,12,30,.46);border:1px solid rgba(255,255,255,.12);border-radius:14px;
@@ -479,7 +479,7 @@ input,select,textarea{
   padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px
 }
 
-/* v3.32: 손패는 타일을 붙여서 자연스럽게 배치 */
+/* v3.33: 손패는 타일을 붙여서 자연스럽게 배치 */
 .rummi-main .rummi-hand{display:flex;flex-wrap:wrap;align-content:flex-start;align-items:flex-end;gap:0;padding:7px 4px 9px;overflow:hidden;}
 .rummi-main .rummi-rack-slot{display:flex;flex:0 0 auto;width:auto;min-width:0;margin:0;padding:0;}
 .rummi-main .rummi-rack-slot .rummi-tile{width:43px;min-width:43px;}
@@ -521,7 +521,7 @@ input,select,textarea{
  <div>
   <h1>🎉 파티 게임 라운지</h1>
   <div class="tag">
-   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.32
+   다빈치 코드 · 마피아 · 라이어 게임 · 루미큐브 · v3.33
   </div>
  </div>
  <div id="who" class="tag"></div>
@@ -865,6 +865,14 @@ function renderGameMenu(){
     <span class="game-name">보드게임 라운지</span>
     <span class="current-badge">현재</span>
    </a>
+    <a class="game-menu-item sub" href="https://gusdl212-lab.github.io/yutnori/">
+     <span class="game-icon">🪵</span>
+     <span class="game-name">윷놀이</span>
+    </a>
+    <a class="game-menu-item sub" href="https://gusdl212-lab.github.io/solitaire/">
+     <span class="game-icon">🃏</span>
+     <span class="game-name">솔리테어</span>
+    </a>
   </div>
  `;
 }
